@@ -10,7 +10,7 @@ get_model_data <- function(file,
 
   robust_pb_download(file = file,
                      dest =  file.path(temp_directory),
-                     repo = "AdamWilsonLab/emma_model",
+                     repo = MODEL_REPO,
                      tag = "current",
                      max_attempts = max_attempts,
                      sleep_time = sleep_time)

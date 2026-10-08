@@ -88,7 +88,7 @@ generate_reports <- function(output_directory = "reports/",
 
     if(!park_data_tag %in% report_files$tag){
 
-      pb_release_create(repo = "AdamWilsonLab/emma_report",
+      pb_release_create(repo = REPORT_REPO,
                         tag = park_data_tag)
 
     }

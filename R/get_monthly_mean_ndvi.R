@@ -1,107 +1,71 @@
 library(terra)
-#current_month <- month(Sys.Date())
 
-#' This function calculates the mean ndvi for the current month from the NDVI releases
+#' Mean EVI for the current calendar month from vi_modis_parquet releases
+#'
+#' Parquet schema: pid, date, sensor, value (EVI × 100). Returns a SpatRaster
+#' on the domain grid in EVI units (value / 100), matching get_most_recent_ndvi.tif.
 get_monthly_mean_ndvi.tif <- function(env_files,
-                                  temp_directory = "data/temp/",
-                                  current_month = current_month){
+                                      temp_directory = "data/temp/",
+                                      current_month = current_month) {
 
+  # Prefer the pre-fetched env_files listing; fall back to listing the parquet tag
+  if (is.null(env_files) || !nrow(env_files)) {
+    env_files <- piggyback::pb_list(
+      repo = ENVDATA_REPO,
+      tag = ENVDATA_RELEASE_TAGS$vi_modis_parquet
+    )
+  }
 
-  # Filter to NDVI records from the relevant month
+  vi_files <- env_files |>
+    dplyr::filter(
+      .data$tag == ENVDATA_RELEASE_TAGS$vi_modis_parquet,
+      grepl("^vi_modis_[0-9]{8}\\.parquet$", .data$file_name)
+    ) |>
+    dplyr::mutate(file_date = parse_envdata_yyyymmdd(.data$file_name)) |>
+    dplyr::filter(!is.na(.data$file_date),
+                  lubridate::month(.data$file_date) == current_month)
 
-    env_files %>%
-      filter(grepl(pattern = "parquet-ndvi",
-                   x=file_name)) -> env_files
+  if (nrow(vi_files) == 0L) {
+    stop(
+      "No vi_modis_YYYYMMDD.parquet assets found for month ",
+      current_month,
+      " on tag ",
+      ENVDATA_RELEASE_TAGS$vi_modis_parquet
+    )
+  }
 
-  # Convert numeric to date
+  for (f in vi_files$file_name) {
+    download_envdata_asset(
+      tag = ENVDATA_RELEASE_TAGS$vi_modis_parquet,
+      file = f,
+      dest_dir = temp_directory,
+      overwrite = FALSE
+    )
+  }
 
-  env_files %>%
-      mutate(unix_date = gsub(pattern = "-dynamic_parquet-ndvi-",
-                              replacement = "",
-                              x=file_name))%>%
-      mutate(unix_date = gsub(pattern = ".gz.parquet",
-                              replacement = "",
-                              x=unix_date))->env_files
+  mean_values <- arrow::open_dataset(
+    file.path(temp_directory, vi_files$file_name)
+  ) |>
+    dplyr::group_by(pid) |>
+    dplyr::summarise(value = mean(value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::collect()
 
-  env_files %>%
-      mutate(month = month(as_date(as.numeric(unix_date)))) -> env_files
+  domain_path <- download_envdata_asset(
+    tag = ENVDATA_RELEASE_TAGS$static,
+    file = "domain.tif",
+    dest_dir = temp_directory,
+    overwrite = FALSE
+  )
+  domain <- terra::rast(domain_path)
+  pid_layer <- if ("pid" %in% names(domain)) domain[["pid"]] else domain[[1]]
 
-
-    # Filter to relevant month
-
-  env_files %>%
-        filter(month == current_month)-> env_files
-
-    # Download files
-
-      robust_pb_download(file = env_files$file_name,
-                         tag = "current",
-                         repo = "AdamWilsonLab/emma_envdata",
-                         dest = file.path(temp_directory),
-                         max_attempts = 10,
-                         sleep_time = 10)
-
-    # Open Dataset and calculate mean
-
-      open_dataset(file.path(temp_directory,env_files$file_name)) %>%
-        group_by(cellID) %>%
-        summarize(value = mean(value))%>%
-        mutate(value=ifelse(value>2000,NA,value)) |>
-        collect()-> mean_values
-
-    # Get template
-
-      robust_pb_download(file = "template.tif",
-                         tag = "processed_static",
-                         repo = "AdamWilsonLab/emma_envdata",
-                         dest = file.path(temp_directory),
-                         max_attempts = 10,
-                         sleep_time = 10)
-
-      template <- rast(file.path(temp_directory,"template.tif"))
-
-    # Make mean raster from template
-
-      values(template) <- NA
-
-      values(template)[mean_values$cellID] <- mean_values$value
-      #template <- classify(template, cbind(21474836,NA ))
-
-      scoff(template) <- cbind(0.01, -1)
-      #terra::NAflag(template) <- 21474836
-    # scale and offset
-#      template <- (template/100)-1
-      template %>%
-        terra::mask(mask = template,
-                    maskvalue = 0,datatype="INT4S") -> template
-      plot(template)
-
-          # write file
-
-      return(template) #%>%
-      # writeRaster(filename = file.path(temp_directory,paste(current_month,"_monthly_mean_ndvi.tif",sep = "")),
-      #             overwrite=TRUE)
-
-    # Upload
-
-      # pb_upload(file = file.path(temp_directory,paste(current_month,"_monthly_mean_ndvi.tif",sep = "")),
-      #           repo = "AdamWilsonLab/emma_report",
-      #           tag = "current")
-
-
-    #cleanup
-
-      #unlink(file.path(temp_directory),recursive = TRUE,force = TRUE)
-
-    # return metadata
-
-      # output <- data.frame(filename =paste(current_month,"_monthly_mean_ndvi.tif",sep = ""),
-      #            repo = "AdamWilsonLab/emma_report",
-      #            tag = "current")
-      #
-
-    #  return(output)
-
-
-
+  out <- pid_layer
+  terra::values(out) <- NA_real_
+  pid_vals <- terra::values(pid_layer)[, 1]
+  idx <- match(mean_values$pid, pid_vals)
+  keep <- !is.na(idx)
+  terra::values(out)[idx[keep]] <- scale_evi_integer(mean_values$value[keep])
+  names(out) <- "evi"
+  out <- terra::mask(out, mask = out, maskvalue = 0)
+  out
 }

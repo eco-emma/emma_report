@@ -1,40 +1,58 @@
 # Spatial Predictions
 
-create_spatial_outputs <- function(envdata, envvars, model_results,data_training) {
+create_spatial_outputs <- function(envdata, envvars, model_results, data_training) {
+
+  # Normalize pixel id: envdata uses pid; older tables used cellID
+  if (!"pid" %in% names(envdata) && "cellID" %in% names(envdata)) {
+    envdata$pid <- envdata$cellID
+  }
+  if (!"pid" %in% names(data_training) && "cellID" %in% names(data_training)) {
+    data_training$pid <- data_training$cellID
+  }
 
   td <- envdata %>%
-    left_join(dplyr::select(data_training, cellID, pid))
+    left_join(dplyr::select(data_training, pid, dplyr::any_of("cellID")), by = "pid")
 
-  xmat=as.matrix(td[,envvars])
+  xmat <- as.matrix(td[, envvars])
 
-  betas=model_results %>%
-    filter(type=="beta") %>%
-    mutate(term=sub("_.*$","",parameter)) %>%
-    dplyr::select(term,median,xname)
+  betas <- model_results %>%
+    filter(type == "beta") %>%
+    mutate(term = sub("_.*$", "", parameter)) %>%
+    dplyr::select(term, median, xname)
 
-  td$gamma = as.vector(xmat%*%filter(betas,term=="gamma")$median)
-  td$lambda = as.vector(xmat%*%filter(betas,term=="lambda")$median)
-  td$A = as.vector(xmat%*%filter(betas,term=="A")$median)
-  td$RT=td$lambda*log(200*td$gamma) #calculate recovery time
+  td$gamma <- as.vector(xmat %*% filter(betas, term == "gamma")$median)
+  td$lambda <- as.vector(xmat %*% filter(betas, term == "lambda")$median)
+  td$A <- as.vector(xmat %*% filter(betas, term == "A")$median)
+  td$RT <- td$lambda * log(200 * td$gamma)
 
-  # get the template raster to align the predictions
-  template="data/template.tif"
-  if(!file.exists(template))
-    download.file("https://github.com/AdamWilsonLab/emma_envdata/releases/download/processed_static/template.tif",destfile=template)
-  domain=raster(template)
-
-  vmat=left_join(data.frame(cellID=values(domain)),
-                 dplyr::select(td,cellID, gamma, lambda, A,RT)) %>%
-                dplyr::select(-cellID)
-
-  # create a raster for each variable
-  rasters =  foreach(i=1:ncol(vmat),.combine=stack) %do% {
-    tdomain=domain
-    values(tdomain)=vmat[,i]
-    names(tdomain)=colnames(vmat)[i]
-    return(tdomain)
+  # Align predictions to the published domain pid grid (static_data/domain.tif)
+  domain_path <- "data/domain.tif"
+  if (!file.exists(domain_path)) {
+    domain_path <- download_envdata_asset(
+      tag = ENVDATA_RELEASE_TAGS$static,
+      file = "domain.tif",
+      dest_dir = "data",
+      overwrite = FALSE
+    )
   }
-  crs(rasters)=CRS("+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +R=6371007.181 +units=m +no_defs")
+  domain_terra <- terra::rast(domain_path)
+  pid_layer <- if ("pid" %in% names(domain_terra)) {
+    domain_terra[["pid"]]
+  } else {
+    domain_terra[[1]]
+  }
 
- return(rasters)
+  pid_vals <- as.vector(terra::values(pid_layer))
+  vmat <- data.frame(pid = pid_vals) %>%
+    left_join(dplyr::select(td, pid, gamma, lambda, A, RT), by = "pid") %>%
+    dplyr::select(-pid)
+
+  layers <- lapply(seq_len(ncol(vmat)), function(i) {
+    layer <- pid_layer
+    terra::values(layer) <- vmat[[i]]
+    names(layer) <- colnames(vmat)[i]
+    layer
+  })
+  rasters <- do.call(c, layers)
+  rasters
 }

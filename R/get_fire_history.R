@@ -1,86 +1,70 @@
-#source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_download.R")
-#source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_upload.R")
-
-
+#' Park-cell fire history from the fireage release
+#'
+#' Downloads recent fireage_modis_*.parquet files and domain.tif, then returns
+#' fire_age_days / last_burn_date rows for pixels intersecting protected areas.
+#' Schema uses `pid` (not legacy cellID).
 get_fire_history <- function(temp_directory = "data/temp/fire_history",
                              max_attempts = 10,
                              sleep_time = 10,
-                             protected_areas = protected_areas){
+                             protected_areas = protected_areas,
+                             n_recent = 24L) {
 
-  #ensure directories are empty
+  if (!dir.exists(temp_directory)) {
+    dir.create(temp_directory, recursive = TRUE, showWarnings = FALSE)
+  }
 
-    # if(dir.exists(file.path(temp_directory))){
-    #
-    #   unlink(file.path(temp_directory),recursive = TRUE,force = TRUE)
-    #
-    # }
-    #
-    # if(!dir.exists(file.path(temp_directory))){
-    #
-    #   dir.create(file.path(temp_directory), recursive = TRUE)
-    #
-    # }
+  fire_assets <- piggyback::pb_list(
+    repo = ENVDATA_REPO,
+    tag = ENVDATA_RELEASE_TAGS$fireage
+  ) |>
+    dplyr::filter(grepl("^fireage_modis_[0-9]{8}\\.parquet$", .data$file_name)) |>
+    dplyr::mutate(file_date = parse_envdata_yyyymmdd(.data$file_name)) |>
+    dplyr::arrange(dplyr::desc(.data$file_date)) |>
+    dplyr::slice_head(n = n_recent)
 
-  # Grab fire data
+  if (nrow(fire_assets) == 0L) {
+    stop("No fireage_modis_*.parquet assets found on tag ", ENVDATA_RELEASE_TAGS$fireage)
+  }
 
-    env_files <- pb_list(repo = "AdamWilsonLab/emma_envdata")
+  for (f in fire_assets$file_name) {
+    download_envdata_asset(
+      tag = ENVDATA_RELEASE_TAGS$fireage,
+      file = f,
+      dest_dir = temp_directory,
+      overwrite = FALSE,
+      max_attempts = max_attempts,
+      sleep_time = sleep_time
+    )
+  }
 
-    fire_files <-
-      env_files %>%
-      filter(grepl(pattern = "time_since_fire", x  = file_name))
+  domain_path <- download_envdata_asset(
+    tag = ENVDATA_RELEASE_TAGS$static,
+    file = "domain.tif",
+    dest_dir = temp_directory,
+    overwrite = FALSE,
+    max_attempts = max_attempts,
+    sleep_time = sleep_time
+  )
+  domain <- terra::rast(domain_path)
+  pid_layer <- if ("pid" %in% names(domain)) domain[["pid"]] else domain[[1]]
 
-    robust_pb_download(file = fire_files$file_name,
-                       dest = temp_directory,
-                       repo = "AdamWilsonLab/emma_envdata",
-                       tag = "current",
-                       overwrite = TRUE,
-                       max_attempts = max_attempts,
-                       sleep_time = sleep_time)
+  all_parks <- sf::st_as_sf(protected_areas)
+  park_extract <- terra::extract(
+    x = pid_layer,
+    y = terra::vect(all_parks),
+    touches = TRUE
+  )
+  park_pids <- unique(stats::na.omit(park_extract[[2]]))
 
-  # Grab template
+  fire_dataset <- arrow::open_dataset(
+    sources = file.path(temp_directory, fire_assets$file_name)
+  ) |>
+    dplyr::filter(pid %in% park_pids) |>
+    dplyr::collect() |>
+    dplyr::mutate(
+      days_since_fire = .data$fire_age_days,
+      cellID = .data$pid  # alias for any legacy report code still expecting cellID
+    )
 
-    robust_pb_download(file = "template.tif",
-                       dest = temp_directory,
-                       repo = "AdamWilsonLab/emma_envdata",
-                       tag = "processed_static",
-                       overwrite = TRUE,
-                       max_attempts = max_attempts,
-                       sleep_time = sleep_time)
-
-    template <- rast(file.path(temp_directory,"template.tif"))
-
-  # Get pixels that are within parks
-
-    all_parks <- st_as_sf(protected_areas)
-
-
-    park_cells <-
-      template %>%
-      terra::extract(y = vect(all_parks),
-                     touches = TRUE)
-
-  # Extract relevant data
-
-    fire_dataset <- open_dataset(sources = file.path(temp_directory,fire_files$file_name)) %>%
-      rename(days_since_fire = value)%>%
-      dplyr::select(-variable) %>%
-      filter(cellID %in% park_cells$template) %>%
-      collect()
-
-  # Write data (if needed)
-
-    # fire_dataset %>%
-    # write_parquet(sink = file.path(temp_directory,"park_cell_vegetation_ages.gz.parquet"),
-    #               compression = "gzip")
-
-
-  # Cleanup
-
-    # unlink(file.path(temp_directory),recursive = TRUE,force = TRUE)
-
-  # Return data
-
-    return(fire_dataset)
-
+  fire_dataset
 }
-

@@ -18,10 +18,15 @@ library(units)
 # }
 
 #library(stantargets)
-source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_download.R")
-source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_upload.R")
-# source all files in R folder
-lapply(list.files("R",pattern="[.]R",full.names = T)[-4], source)
+# Envdata download/upload helpers and release-tag contract live in R/envdata_contract.R
+# (sourced below). Do not source deleted AdamWilsonLab robust_pb_*.R URLs.
+# source all files in R folder (skip filter_training_data.R — historical exclusion)
+r_files <- list.files("R", pattern = "[.]R$", full.names = TRUE)
+r_files <- r_files[!grepl("filter_training_data[.]R$", basename(r_files))]
+# Load contract first so ENVDATA_* constants exist for other R/ files
+contract <- r_files[grepl("envdata_contract[.]R$", basename(r_files))]
+other <- setdiff(r_files, contract)
+lapply(c(contract, other), source)
 
 options(tidyverse.quiet = TRUE)
 options(clustermq.scheduler = "multicore")
@@ -30,7 +35,7 @@ geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 tar_option_set(packages = c("piggyback","cmdstanr", "posterior", "bayesplot", "tidyverse",
                             "stringr","knitr","sf","stars","units","arrow","lubridate","stantargets",
                             "doParallel","raster","quarto","tarchetypes",
-                            "targets","doParallel","plotly","leaflet", "gt"),
+                            "targets","doParallel","plotly","leaflet", "gt", "jsonlite", "terra"),
                deployment="main")
 
 # push intermediate products to github release?
@@ -38,6 +43,7 @@ piggyback_push = F
 
 sleep_time = 10
 max_attempts = 10
+# Legacy report-output tag (emma_report releases). Envdata inputs use ENVDATA_RELEASE_TAGS.
 tag = "current"
 min_date = "1970-01-01"
 
@@ -82,10 +88,11 @@ list(
   #             command = get_env_files()
   #             ),
 
+  # Refresh release asset listing daily (static_data, vi_*, fireage, stac-*, …)
   tar_age(
         name    = env_files,
         command = get_env_files(),
-        age     = as.difftime(1, units = "days")   # 하루마다 목록 새로 가져오기
+        age     = as.difftime(1, units = "days")
       ),
   #   tar_target(
   #   env_files,

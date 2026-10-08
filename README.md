@@ -6,18 +6,38 @@ Draft reports can be found [here](https://adamwilsonlab.github.io/emma_report/)
 
 The EMMA workflow consists of four modules, each with a separate Github repo:
 
-1) The Environmental Data module (https://github.com/AdamWilsonLab/emma_envdata)
+1) The Environmental Data module (https://github.com/eco-emma/emma_envdata)
 
-2) The Modelling and Change Detection module (https://github.com/AdamWilsonLab/emma_model)
+2) The Modelling and Change Detection module (https://github.com/eco-emma/emma_model)
 
 3) The Change Classification module (https://github.com/AdamWilsonLab/emma_change_classification)
 
-4) The Reporting module (https://github.com/AdamWilsonLab/emma_report)
+4) The Reporting module (https://github.com/eco-emma/emma_report)
 
 
 ## Data
 
-The data used by this workflow are stored in multiple locations.  Weather data are stored via releases. NDVI, NDWI, and fire history data are pulled from releases in our [emma_envdata](https://github.com/AdamWilsonLab/emma_envdata) Github repo.
+Weather data are stored via emma_report releases. Vegetation index, fire age, and static layers are pulled from [emma_envdata](https://github.com/eco-emma/emma_envdata) GitHub Releases using the public contract in `R/envdata_contract.R`.
+
+### emma_envdata contract (current)
+
+| Product | Release tag | Key assets |
+|---|---|---|
+| Static grid / covariates | `static_data` | `domain.tif` (bands: pid, domain, remnants, remnants_distance), `domain.parquet`, `static_covariates.parquet` |
+| MODIS Terra / Aqua VI COGs | `vi_modis_terra_raster`, `vi_modis_aqua_raster` | `vi_modis_{terra\|aqua}_YYYYMMDD.tif` (bands: evi×100, doy) |
+| VIIRS VI COGs | `vi_viirs_raster` | `vi_viirs_{snpp\|noaa20}_YYYYMMDD.tif` |
+| VI parquet | `vi_modis_parquet` | `vi_modis_YYYYMMDD.parquet` (`pid`, `date`, `sensor`, `value`) |
+| Fire age | `fireage` | `fireage_current.tif`, `fireage_{modis\|viirs}_YYYYMMDD.parquet` |
+| STAC | `stac`, `stac-vi`, `stac-burn`, `stac-static` | `catalog.json` + collection/item JSON |
+
+STAC root: https://github.com/eco-emma/emma_envdata/releases/download/stac/catalog.json
+
+Notes for report readers:
+
+- Tabular join key is **`pid`** (legacy `cellID` is aliased where needed).
+- Vegetation product is **EVI** (report targets still named `*_ndvi*` for template compatibility).
+- EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
+- Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
 
 ## Releases
 
@@ -27,6 +47,10 @@ The data used by this workflow are stored in multiple locations.  Weather data a
 
 ## Changelog
 
+* Oct 2026
+  - Migrated envdata consumption to the eco-emma public release/STAC contract (`static_data`, `vi_*`, `fireage`, `stac*`).
+  - Replaced legacy AdamWilsonLab tags (`current`, `processed_static`, `clean_ndvi_modis`, `processed_most_recent_burn_dates`, `raw_static`) and `cellID` / `stable_data.gz.parquet` assumptions.
+  - Added `R/envdata_contract.R` as the single source of release-tag and download helpers for the report pipeline.
 * May 14, 2024
   - Added a new section to the README to describe the data used by the workflow and where it is stored.  Added a new section to describe the releases and what they contain.  Added a new section to describe the changelog.
 * May 13, 2024 - Significant updates to the report website including:

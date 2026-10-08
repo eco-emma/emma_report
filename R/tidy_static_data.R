@@ -1,40 +1,64 @@
+#' Tidy static covariates from the new static_covariates.parquet product
+#'
+#' Legacy input was stable_data.gz.parquet with cellID + remnant_distance.tif.
+#' New schema uses pid + remnants_distance on static_data/static_covariates.parquet.
+tidy_static_data <- function(envdata, region, remnant_distance, sample_proportion) {
 
-tidy_static_data <- function(envdata,region,remnant_distance,sample_proportion){
+  cov_path <- file.path(envdata, "static_covariates.parquet")
+  if (!file.exists(cov_path)) {
+    # Allow envdata to be either a directory or the parquet path itself
+    cov_path <- if (grepl("static_covariates\\.parquet$", envdata)) {
+      envdata
+    } else {
+      stop("Expected static_covariates.parquet under ", envdata)
+    }
+  }
 
-# Load static parquet file
-data <- open_dataset(sources = file.path(envdata,"stable_data.gz.parquet"))
+  data <- arrow::open_dataset(sources = cov_path)
 
-# define region and reproject to modis sinusoidal
-region_bbox = st_bbox(region,crs = st_crs(4326)) %>%
-    st_as_sfc() %>%
-    st_transform(crs = "+proj=sinu +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs") %>%
-    st_bbox()
+  region_bbox <- sf::st_bbox(region, crs = sf::st_crs(4326)) |>
+    sf::st_as_sfc() |>
+    sf::st_transform(crs = "EPSG:9221") |>
+    sf::st_bbox()
 
-# filter by remnant, distance, region, and add training/testing label according to sample_proportion
-td=data %>%
-  collect() %>%
-  mutate(
-    fynbos = case_when( #all remnants
-      remnant_distance.tif>0 ~ TRUE,
-      TRUE ~ FALSE),
-    model_domain = case_when( #core remnants within bbox domain
-      remnant_distance.tif>=remnant_distance &
-      x>region_bbox$xmin & x<region_bbox$xmax &
-      y>region_bbox$ymin & y<region_bbox$ymax ~ TRUE,
-      TRUE ~ FALSE)) %>%
-  group_by(model_domain) %>%
-  mutate(training = sample(c(TRUE,FALSE),size=n(), replace = T,prob = c(sample_proportion, 1-sample_proportion))) %>%
-  mutate(sample = ifelse(model_domain, training, FALSE)) %>%
-  compute() %>%
-  ungroup()
+  td <- data |>
+    dplyr::collect()
 
+  # Coordinates may be columns or embedded in geoparquet geometry
+  if (!all(c("x", "y") %in% names(td)) && inherits(td, "sf")) {
+    xy <- sf::st_coordinates(td)
+    td$x <- xy[, 1]
+    td$y <- xy[, 2]
+  }
+  if (!"pid" %in% names(td) && "cellID" %in% names(td)) {
+    td$pid <- td$cellID
+  }
 
+  td <- td |>
+    dplyr::mutate(
+      cellID = .data$pid,
+      fynbos = dplyr::case_when(
+        .data$remnants > 0 ~ TRUE,
+        TRUE ~ FALSE
+      ),
+      model_domain = dplyr::case_when(
+        .data$remnants_distance >= remnant_distance &
+          .data$x > region_bbox$xmin & .data$x < region_bbox$xmax &
+          .data$y > region_bbox$ymin & .data$y < region_bbox$ymax ~ TRUE,
+        TRUE ~ FALSE
+      )
+    ) |>
+    dplyr::group_by(.data$model_domain) |>
+    dplyr::mutate(
+      training = sample(
+        c(TRUE, FALSE),
+        size = dplyr::n(),
+        replace = TRUE,
+        prob = c(sample_proportion, 1 - sample_proportion)
+      )
+    ) |>
+    dplyr::mutate(sample = ifelse(.data$model_domain, .data$training, FALSE)) |>
+    dplyr::ungroup()
 
-if(F) {
-  # map domain for debugging
-  ggplot(td,aes(x=x,y=y,fill=sample))+geom_tile()+coord_equal()
-}
-
-return(td)
-
+  td
 }

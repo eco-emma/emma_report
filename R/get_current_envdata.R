@@ -7,11 +7,11 @@ library(ggplot2)
 source("R/get_park_polygons.R")
 
 library(targets)
-#tar_load(monthly_mean_ndvi)
-#tar_load(most_recent_ndvi_date)
-#tar_load(parks)
-#tar_load(remnants)
-#tar_load(park_fire_history)
+# tar_load(monthly_mean_ndvi)
+# tar_load(most_recent_ndvi_date)
+# tar_load(parks)
+# tar_load(remnants)
+# tar_load(park_fire_history)
 
 source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_download.R")
 source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_upload.R")
@@ -37,156 +37,170 @@ source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robu
 # ){
 
 
-  get_temp_directory <- function(temp_directory = "data/temp"){
-#    if(dir.exists(file.path(temp_directory))){
-#      unlink(file.path(temp_directory),recursive = TRUE,force = TRUE) }
-    #Create temp directory (needs to come after get_park_polygons if using the same temp_directory, since the temp folder is deleted)
-    if(!dir.exists(file.path(temp_directory))){
-      dir.create(file.path(temp_directory),recursive = TRUE)    }
-      return(temp_directory)
-    }
-
-  # Get outputs from model
-
-    #model_results <- tar_load(model_results)
-
-    #model_prediction <- tar_load(model_prediction)
-
-    #spatial_outputs <- tar_load(spatial_outputs)
-
-
-  # Get list of available env data files
-get_env_files <- function(repo="AdamWilsonLab/emma_envdata"){
-    env_files <- pb_list(repo)
-    return(env_files)
+get_temp_directory <- function(temp_directory = "data/temp") {
+  #    if(dir.exists(file.path(temp_directory))){
+  #      unlink(file.path(temp_directory),recursive = TRUE,force = TRUE) }
+  # Create temp directory (needs to come after get_park_polygons if using the same temp_directory, since the temp folder is deleted)
+  if (!dir.exists(file.path(temp_directory))) {
+    dir.create(file.path(temp_directory), recursive = TRUE)
+  }
+  return(temp_directory)
 }
 
-  # Get list of available report files
-get_report_files <- function(repo = "AdamWilsonLab/emma_report",create_park_tag=T){
-    report_files <- pb_list(repo)
+# Get outputs from model
 
-    # create output release if needed
-    park_data_tag = "park_data"
-    if(create_park_tag & !park_data_tag %in% report_files$tag){
+# model_results <- tar_load(model_results)
 
-      pb_release_create(repo,
-                        tag = park_data_tag)
+# model_prediction <- tar_load(model_prediction)
 
-    }
+# spatial_outputs <- tar_load(spatial_outputs)
 
 
-        return(report_files)
+# Get list of available env data files
+get_env_files <- function(repo = "AdamWilsonLab/emma_envdata") {
+  env_files <- pb_list(repo)
+  return(env_files)
+}
+
+# Get list of available report files
+get_report_files <- function(repo = "AdamWilsonLab/emma_report", create_park_tag = T) {
+  report_files <- pb_list(repo)
+
+  # create output release if needed
+  park_data_tag <- "park_data"
+  if (create_park_tag & !park_data_tag %in% report_files$tag) {
+    pb_release_create(repo,
+      tag = park_data_tag
+    )
+  }
+
+
+  return(report_files)
 }
 
 
+# get most recent fire data
+get_years_since_fire.tif <- function(env_files, temp_directory, most_recent_fire_date, piggyback_push) {
+  env_files %>%
+    filter(tag == "processed_most_recent_burn_dates") %>%
+    mutate(file_date = gsub(pattern = ".tif", replacement = "", x = file_name)) %>%
+    mutate(file_date = gsub(pattern = "_", replacement = "-", x = file_date)) %>%
+    slice(which.max(as_date(file_date))) -> most_recent_fire_file
 
-  #get most recent fire data
-get_years_since_fire.tif <- function(env_files, temp_directory, most_recent_fire_date,piggyback_push){
-    env_files %>%
-      filter(tag == "processed_most_recent_burn_dates") %>%
-      mutate(file_date = gsub(pattern = ".tif",replacement = "",x = file_name)) %>%
-      mutate(file_date = gsub(pattern = "_",replacement = "-",x = file_date)) %>%
-      slice(which.max(as_date(file_date))) -> most_recent_fire_file
+  robust_pb_download(
+    file = most_recent_fire_file$file_name,
+    dest = file.path(temp_directory),
+    repo = "AdamWilsonLab/emma_envdata",
+    tag = most_recent_fire_file$tag,
+    max_attempts = max_attempts,
+    sleep_time = 10
+  )
 
-    robust_pb_download(file = most_recent_fire_file$file_name,
-                  dest = file.path(temp_directory),
-                  repo = "AdamWilsonLab/emma_envdata",
-                  tag = most_recent_fire_file$tag,
-                  max_attempts = max_attempts,
-                  sleep_time = 10)
+  most_recent_fire.tif <- terra::rast(file.path(
+    temp_directory,
+    most_recent_fire_file$file_name
+  ))
 
-    most_recent_fire.tif <- terra::rast(file.path(temp_directory,
-                                                     most_recent_fire_file$file_name))
-
-    most_recent_fire.tif[most_recent_fire.tif == 0] <- NA #toss NAs
+  most_recent_fire.tif[most_recent_fire.tif == 0] <- NA # toss NAs
 
   # convert from date of fire to years since fire
 
-    years_since_fire.tif <-
-      terra::app(x = most_recent_fire.tif,
-                 fun = function(x){
-                   return( time_length(Sys.Date() - as_date(x,origin = lubridate::origin),unit = "years"))
-                 })
+  years_since_fire.tif <-
+    terra::app(
+      x = most_recent_fire.tif,
+      fun = function(x) {
+        return(time_length(Sys.Date() - as_date(x, origin = lubridate::origin), unit = "years"))
+      }
+    )
 
-  if(piggyback_push)  {robust_pb_upload(file = file.path(temp_directory,"years_since_fire.tif"),
-                     repo = "AdamWilsonLab/emma_report",
-                     tag = tag,
-                     max_attempts = 10,
-                     sleep_time = 10,
-                     temp_directory = temp_directory,
-                     overwrite = TRUE)}
+  if (piggyback_push) {
+    robust_pb_upload(
+      file = file.path(temp_directory, "years_since_fire.tif"),
+      repo = "AdamWilsonLab/emma_report",
+      tag = tag,
+      max_attempts = 10,
+      sleep_time = 10,
+      temp_directory = temp_directory,
+      overwrite = TRUE
+    )
+  }
 
-    return(years_since_fire.tif)
+  return(years_since_fire.tif)
 }
 
-  # crop years since fire raster to the remnants
-generate_fires_vector <- function(years_since_fire.tif){
-    remnants <- terra::rast("data/misc/remnants.tif")
+# crop years since fire raster to the remnants
+generate_fires_vector <- function(years_since_fire.tif) {
+  remnants <- terra::rast("data/misc/remnants.tif")
 
-years_since_fire.tif <- terra::mask(years_since_fire.tif, remnants)
+  years_since_fire.tif <- terra::mask(years_since_fire.tif, remnants)
 
   # make a polygon version and convert to WGS84 (for plotting ease)
 
-    fires_wgs <- terra::as.polygons(x = years_since_fire.tif) %>%
-      st_as_sf() %>%
-      rename(Years = lyr.1) %>%
-      st_transform(crs = st_crs(4326))
+  fires_wgs <- terra::as.polygons(x = years_since_fire.tif) %>%
+    st_as_sf() %>%
+    rename(Years = lyr.1) %>%
+    st_transform(crs = st_crs(4326))
 
-    return(fires_wgs)
-
+  return(fires_wgs)
 }
 
-  # get most recent NDVI data
-get_most_recent_ndvi_file <- function(env_files){
-    env_files %>%
-      filter(tag == "clean_ndvi_modis") %>%
-      filter(grepl(pattern = ".tif",x = file_name)) %>%
-      mutate(file_date = gsub(pattern = ".tif",replacement = "",x = file_name)) %>%
-      mutate(file_date = gsub(pattern = "_",replacement = "-",x = file_date)) %>%
-      slice(which.max(as_date(file_date))) -> most_recent_ndvi_file
+# get most recent NDVI data
+get_most_recent_ndvi_file <- function(env_files) {
+  env_files %>%
+    filter(tag == "clean_ndvi_modis") %>%
+    filter(grepl(pattern = ".tif", x = file_name)) %>%
+    mutate(file_date = gsub(pattern = ".tif", replacement = "", x = file_name)) %>%
+    mutate(file_date = gsub(pattern = "_", replacement = "-", x = file_date)) %>%
+    slice(which.max(as_date(file_date))) -> most_recent_ndvi_file
 
   return(most_recent_ndvi_file)
 }
 
-get_most_recent_ndvi.tif <- function(most_recent_ndvi_file,temp_directory){
-    robust_pb_download(file = most_recent_ndvi_file$file_name,
-                dest = file.path(temp_directory),
-                repo = "AdamWilsonLab/emma_envdata",
-                tag = most_recent_ndvi_file$tag,
-                max_attempts = max_attempts,
-                sleep_time = 10)
+get_most_recent_ndvi.tif <- function(most_recent_ndvi_file, temp_directory) {
+  robust_pb_download(
+    file = most_recent_ndvi_file$file_name,
+    dest = file.path(temp_directory),
+    repo = "AdamWilsonLab/emma_envdata",
+    tag = most_recent_ndvi_file$tag,
+    max_attempts = max_attempts,
+    sleep_time = 10
+  )
 
   # Load the NDVI raster
 
-    most_recent_ndvi.tif <- terra::rast(file.path(temp_directory,
-                                                     most_recent_ndvi_file$file_name))
+  most_recent_ndvi.tif <- terra::rast(file.path(
+    temp_directory,
+    most_recent_ndvi_file$file_name
+  ))
 
-    #most_recent_ndvi.tif <- terra::rast(file.path(temp_directory,"ndvi.tif"))
+  # most_recent_ndvi.tif <- terra::rast(file.path(temp_directory,"ndvi.tif"))
   # Fix the NDVI values
 
-    most_recent_ndvi.tif <- (most_recent_ndvi.tif/100)-1
+  most_recent_ndvi.tif <- (most_recent_ndvi.tif / 100) - 1
 
-    most_recent_ndvi.tif[most_recent_ndvi.tif > 1] <- 1
-    most_recent_ndvi.tif[most_recent_ndvi.tif < -1] <- -1
+  most_recent_ndvi.tif[most_recent_ndvi.tif > 1] <- 1
+  most_recent_ndvi.tif[most_recent_ndvi.tif < -1] <- -1
 
-    most_recent_ndvi.tif %>%
-      terra::mask(mask = most_recent_ndvi.tif,
-                  maskvalue = 0) -> most_recent_ndvi.tif
+  most_recent_ndvi.tif %>%
+    terra::mask(
+      mask = most_recent_ndvi.tif,
+      maskvalue = 0
+    ) -> most_recent_ndvi.tif
 
-    return(most_recent_ndvi.tif)
-    }
-
-  # Get NDVI date
-get_most_recent_ndvi_date <- function(most_recent_ndvi_file){
-    most_recent_ndvi_file %>%
-      mutate(file_name = gsub(pattern = ".tif",replacement="",x=file_name))%>%
-      pull(file_name)%>%
-      as_date() -> most_recent_ndvi_date
-
-    return(most_recent_ndvi_date)
+  return(most_recent_ndvi.tif)
 }
 
-  # Monthly mean NDVI
+# Get NDVI date
+get_most_recent_ndvi_date <- function(most_recent_ndvi_file) {
+  most_recent_ndvi_file %>%
+    mutate(file_name = gsub(pattern = ".tif", replacement = "", x = file_name)) %>%
+    pull(file_name) %>%
+    as_date() -> most_recent_ndvi_date
+
+  return(most_recent_ndvi_date)
+}
+
+# Monthly mean NDVI
 # get_monthly_mean_ndvi_raster <- function(monthly_mean_ndvi, temp_directory){
 #     robust_pb_download(file = monthly_mean$filename,
 #                        dest = file.path(temp_directory),
@@ -201,82 +215,74 @@ get_most_recent_ndvi_date <- function(most_recent_ndvi_file){
 #     return(monthly_mean_ndvi_raster)
 # }
 
-    # Create delta NDVI raster
+# Create delta NDVI raster
 
-get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.tif) {
+get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif, monthly_mean_ndvi.tif) {
   monthly_delta_ndvi.tif <- (most_recent_ndvi.tif - monthly_mean_ndvi.tif)
 
-    if(crs(most_recent_ndvi.tif,proj=TRUE) != crs(monthly_mean_ndvi.tif,proj=TRUE)){
+  if (crs(most_recent_ndvi.tif, proj = TRUE) != crs(monthly_mean_ndvi.tif, proj = TRUE)) {
+    stop("NDVI CRS mismatch")
+  }
 
-      stop("NDVI CRS mismatch")
-
-    }
-
-    if(terra::ext(most_recent_ndvi.tif) != terra::ext(monthly_mean_ndvi.tif)){
-
-      stop("NDVI extent mismatch")
-
-    }
+  if (terra::ext(most_recent_ndvi.tif) != terra::ext(monthly_mean_ndvi.tif)) {
+    stop("NDVI extent mismatch")
+  }
 
 
-    if(crs(monthly_delta_ndvi.tif,proj=TRUE) != crs(most_recent_ndvi.tif,proj=TRUE)){
+  if (crs(monthly_delta_ndvi.tif, proj = TRUE) != crs(most_recent_ndvi.tif, proj = TRUE)) {
+    crs(monthly_delta_ndvi.tif) <- crs(most_recent_ndvi.tif)
+  }
 
-      crs(monthly_delta_ndvi.tif) <- crs(most_recent_ndvi.tif)
-    }
+  # Double check projections
 
-    # Double check projections
+  if (crs(most_recent_ndvi.tif, proj = TRUE) !=
+    crs(monthly_mean_ndvi.tif, proj = TRUE)) {
+    stop("NDVI layers have different projections")
+  }
 
-    if(crs(most_recent_ndvi.tif, proj = TRUE) !=
-       crs(monthly_mean_ndvi.tif, proj = TRUE)){
-      stop("NDVI layers have different projections")
-    }
+  if (crs(most_recent_ndvi.tif, proj = TRUE) !=
+    crs(monthly_delta_ndvi.tif, proj = TRUE)) {
+    stop("NDVI layers have different projections")
+  }
 
-    if(crs(most_recent_ndvi.tif, proj = TRUE) !=
-       crs(monthly_delta_ndvi.tif, proj = TRUE)){
-      stop("NDVI layers have different projections")
-    }
+  # Write monthly delta NDVI layer
 
-    # Write monthly delta NDVI layer
+  return(monthly_delta_ndvi.tif)
+  # Upload delta NDVI in case anyone wants it
 
-    return(monthly_delta_ndvi.tif)
-    # Upload delta NDVI in case anyone wants it
-
-   # robust_pb_upload(file = file.path(temp_directory,"monthly_delta_NDVI.tif"),
-   #                   repo = "AdamWilsonLab/emma_report",
-   #                   tag = "current",
-   #                   max_attempts = max_attempts,
-   #                   sleep_time = 10,
-   #                   temp_directory = temp_directory,
-   #                   overwrite = TRUE)
-#return(monthly_delta_ndvi.tif)
-
-        }
+  # robust_pb_upload(file = file.path(temp_directory,"monthly_delta_NDVI.tif"),
+  #                   repo = "AdamWilsonLab/emma_report",
+  #                   tag = "current",
+  #                   max_attempts = max_attempts,
+  #                   sleep_time = 10,
+  #                   temp_directory = temp_directory,
+  #                   overwrite = TRUE)
+  # return(monthly_delta_ndvi.tif)
+}
 
 
-  # MODIS NDWI
-            ## Commenting NDWI out for now, as gee hasn't updated to the new version yet.
-            ## uncomment below and adjust the corresponding bits of report_prototype.qmd if this changes
+# MODIS NDWI
+## Commenting NDWI out for now, as gee hasn't updated to the new version yet.
+## uncomment below and adjust the corresponding bits of report_prototype.qmd if this changes
 
-      # robust_pb_download(file = "ndwi.tif",
-      #                    tag = tag,
-      #                    dest = file.path(temp_directory),
-      #                    repo = "AdamWilsonLab/emma_envdata",
-      #                    max_attempts = max_attempts,
-      #                    sleep_time = sleep_time)
-      #
-      # ndwi_rast <- raster::raster(terra::rast(file.path(temp_directory,"ndwi.tif"))) %>%
-      #   round(digits = 2) #round to save memory
+# robust_pb_download(file = "ndwi.tif",
+#                    tag = tag,
+#                    dest = file.path(temp_directory),
+#                    repo = "AdamWilsonLab/emma_envdata",
+#                    max_attempts = max_attempts,
+#                    sleep_time = sleep_time)
+#
+# ndwi_rast <- raster::raster(terra::rast(file.path(temp_directory,"ndwi.tif"))) %>%
+#   round(digits = 2) #round to save memory
 
-    # MODIS NDWI date
+# MODIS NDWI date
 
-      # env_files %>%
-      #   filter(file_name == "ndwi.tif")%>%
-      #   pull(timestamp) %>%
-      #   as_date() -> most_recent_ndwi_date
+# env_files %>%
+#   filter(file_name == "ndwi.tif")%>%
+#   pull(timestamp) %>%
+#   as_date() -> most_recent_ndwi_date
 
-  # Other drought layers?
-
-
+# Other drought layers?
 
 
 # return(
@@ -294,7 +300,7 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 #   stations_sf,
 # )
 
-#}#end fx
+# }#end fx
 
 # ===================================
 # library(stars)
@@ -365,21 +371,21 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 # #     paths <- list.files(
 # #       dir, pattern = "(?i)\\.tif$", full.names = TRUE, recursive = TRUE
 # #     )
-  
+
 # #     # Ensure character vector
 # #     paths <- as.character(paths)
-  
+
 # #     # Safety check: stop if no files
 # #     if (length(paths) == 0L) {
 # #       stop("No .tif files found in directory: ", dir)
 # #     }
-  
+
 # #     # Safety check: stop if any missing files
 # #     if (!all(file.exists(paths))) {
 # #       missing <- paths[!file.exists(paths)]
 # #       stop("Missing files: ", paste(missing, collapse = ", "))
 # #     }
-  
+
 # #     # Return vector of file paths
 # #     paths
 # #   }
@@ -402,7 +408,6 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 # }
 
 
-
 #   #get most recent fire data
 # get_years_since_fire.tif <- function(env_files, temp_directory, most_recent_fire_date,piggyback_push){
 #     env_files %>%
@@ -423,7 +428,7 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 
 #     most_recent_fire.tif[most_recent_fire.tif == 0] <- NA #toss NAs
 
-  # convert from date of fire to years since fire
+# convert from date of fire to years since fire
 
 #     years_since_fire.tif <-
 #       terra::app(x = most_recent_fire.tif,
@@ -446,8 +451,8 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 # generate_fires_vector <- function(years_since_fire.tif){
 #     remnants <- terra::rast("data/misc/remnants.tif")
 
-    # years_since_fire.tif %>%
-    #   terra::mask(remnants) -> years_since_fire.tif
+# years_since_fire.tif %>%
+#   terra::mask(remnants) -> years_since_fire.tif
 
 #   # make a polygon version and convert to WGS84 (for plotting ease)
 
@@ -483,7 +488,7 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 #       file_date = suppressWarnings(ymd(gsub("[-_]", "", date_str)))
 #     ) %>%
 #     filter(!is.na(file_date)) %>%
-#     arrange(desc(file_date), desc(file_name)) %>% 
+#     arrange(desc(file_date), desc(file_name)) %>%
 #     slice(1)
 # }
 
@@ -654,8 +659,6 @@ get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif,monthly_mean_ndvi.ti
 #       #   as_date() -> most_recent_ndwi_date
 
 #   # Other drought layers?
-
-
 
 
 # # return(

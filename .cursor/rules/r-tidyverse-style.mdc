@@ -1,0 +1,16 @@
+---
+description: Require tidyverse style for all R code in emma_report
+globs: "**/*.{R,r,Rmd,qmd}"
+alwaysApply: true
+---
+
+# R tidyverse style (required)
+
+Follow the [tidyverse style guide](https://style.tidyverse.org) for every R
+edit in this repo.
+
+- Prefer tidyverse verbs and the native pipe `|>` (not `%>%`).
+- Use 2-space indent, ~80-char lines, `snake_case`, and `<-` assignment.
+- Restyle with `styler::style_file()` / `styler::style_dir()`; formatting-only
+  changes must not alter behavior.
+- Details: `.github/instructions/r-style.instructions.md` and `AGENTS.md`.

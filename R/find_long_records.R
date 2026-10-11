@@ -3,32 +3,31 @@
 #' @param age_range vector length 2 - include pixels with ages in this range
 
 
-find_long_records<-function(env_files,age_range=c(2,10),ndvi_prob=0.8){
-
-  age_files <- open_dataset(sources = list.files("data/envdata","dynamic_parquet-time_since_fire",full=T))
-  ndvi_files <- open_dataset(sources = list.files("data/envdata","dynamic_parquet-ndvi",full=T))
+find_long_records <- function(env_files, age_range = c(2, 10), ndvi_prob = 0.8) {
+  age_files <- open_dataset(sources = list.files("data/envdata", "dynamic_parquet-time_since_fire", full = T))
+  ndvi_files <- open_dataset(sources = list.files("data/envdata", "dynamic_parquet-ndvi", full = T))
 
   long_aged_pixels <-
-    age_files  %>%
-    filter(value!=0,value>age_range[1]*365,value>age_range[2]*365) %>%
+    age_files %>%
+    filter(value != 0, value > age_range[1] * 365, value > age_range[2] * 365) %>%
     collect() %>%
     group_by(cellID) %>%
-    summarize(n_age=sum(n())) %>%
+    summarize(n_age = sum(n())) %>%
     as_tibble()
 
   good_ndvi_pixels <-
-    ndvi_files  %>%
+    ndvi_files %>%
     filter(!is.na(value)) %>%
     collect() %>%
     as_tibble() %>%
     group_by(cellID) %>%
-    summarize(n=sum(n()))
+    summarize(n = sum(n()))
 
-  max_number_ndvi=max(good_ndvi_pixels$n)
+  max_number_ndvi <- max(good_ndvi_pixels$n)
 
   keep_pixels <- long_aged_pixels %>%
-    left_join(good_ndvi_pixels, by="cellID") %>%
-    filter(n>(max_number_ndvi*ndvi_prob)) %>%
+    left_join(good_ndvi_pixels, by = "cellID") %>%
+    filter(n > (max_number_ndvi * ndvi_prob)) %>%
     dplyr::select(cellID)
 
   return(keep_pixels)

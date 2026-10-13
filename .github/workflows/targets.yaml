@@ -33,7 +33,6 @@ on:
       - master
       - dev-adam
       - 2025_website
-      - cursor/envdata-format-update-e284
   pull_request:
     branches:
       - main

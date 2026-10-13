@@ -32,22 +32,25 @@ update_station_list_nonint <- function(max_attempts = 5L, sleep_time = 5) {
 
   for (attempt in seq_len(max_attempts)) {
     attempt_result <- tryCatch(
-      {
-        data.table::fread(station_url)
-      },
-      error = function(e) e,
-      warning = function(w) w
+      # fread warns on wrong content-type even when the download fails;
+      # suppress so we can retry on the hard error path.
+      suppressWarnings(data.table::fread(station_url)),
+      error = function(e) e
     )
 
-    if (inherits(attempt_result, "data.frame")) {
+    if (inherits(attempt_result, "data.frame") && nrow(attempt_result) > 0L) {
       isd_history <- data.table::as.data.table(attempt_result)
       break
     }
 
-    last_error <- attempt_result
+    last_error <- if (inherits(attempt_result, "error")) {
+      attempt_result
+    } else {
+      simpleError("empty or invalid station list response")
+    }
     message(
       "Station list download attempt ", attempt, "/", max_attempts,
-      " failed: ", conditionMessage(attempt_result)
+      " failed: ", conditionMessage(last_error)
     )
     if (attempt < max_attempts) {
       Sys.sleep(sleep_time * attempt)

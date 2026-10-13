@@ -85,14 +85,22 @@ protected_areas <- st_as_sf(protected_areas)
 
     # get data
 
-    data_i <-   tryCatch(expr =get_inat_obs(taxon_name = invasive_species[i],
-                                                 bounds = domain,
-                                                 maxresults = 10000),error = function(e){e})
+    data_i <- tryCatch(
+      get_inat_obs(
+        taxon_name = invasive_species[i],
+        bounds = domain,
+        maxresults = 10000
+      ),
+      error = function(e) e
+    )
 
-
-    # if nothing is returned or other error occurs, move on
-
-    if(inherits(x = data_i,what = "error")){next}
+    # rinat often returns NULL (with a message) when the API is down — not an error.
+    if (inherits(data_i, "error") ||
+        is.null(data_i) ||
+        !inherits(data_i, "data.frame") ||
+        nrow(data_i) == 0L) {
+      next
+    }
 
     # filter by date
 
@@ -130,10 +138,28 @@ protected_areas <- st_as_sf(protected_areas)
 
   }
 
+    # If every species query failed (common when iNaturalist is down), return an
+    # empty sf so downstream report targets can still run.
+    if (is.null(full_records) ||
+        !inherits(full_records, "data.frame") ||
+        nrow(full_records) == 0L) {
+      warning(
+        "No iNaturalist records retrieved (API unavailable or all queries empty). ",
+        "Returning an empty sf object so the pipeline can continue.",
+        call. = FALSE
+      )
+      return(
+        sf::st_sf(
+          invasive = logical(),
+          geometry = sf::st_sfc(crs = "WGS84")
+        )
+      )
+    }
+
     # add flag for invasive species of interest - use the str_detect if you are downloading all species above.
 
     full_records <- full_records |>
-      mutate(invasive = T)
+      mutate(invasive = TRUE)
     #str_detect(string = scientific_name ,
     #                               pattern = paste(invasive_taxa, collapse="|")))
 

@@ -49,15 +49,14 @@ name: targets
 jobs:
   targets:
     runs-on: ubuntu-latest
-    # Image built from eco-emma/emma_docker; ships the same renv.lock library.
+    # Always run inside the published emma image (laptop / GHA / Singularity share this tag).
+    # Packages come from the image site-library — do not renv::restore() or update.packages().
     container: adamwilsonlab/emma:latest
     env:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
-      RENV_CONFIG_REPOS_OVERRIDE: ""
-      # Prefer the container site-library (matches emma_docker renv.lock) before
-      # installing anything project-local. No update.packages on every run.
-      RENV_PATHS_LIBRARY: ${{ github.workspace }}/renv/library
-      RENV_PATHS_CACHE: ${{ github.workspace }}/renv/cache
+      # CmdStan is installed under /opt in the image (Singularity-safe)
+      CMDSTAN: /opt/cmdstan/current
+      CMDSTAN_PATH: /opt/cmdstan/current
     steps:
       - name: Extract branch name
         shell: bash
@@ -72,32 +71,6 @@ jobs:
       - name: Checkout LFS objects
         run: git lfs checkout
         continue-on-error: true
-      - name: Cache renv
-        uses: actions/cache@v4
-        with:
-          path: |
-            renv/library
-            renv/cache
-          key: renv-${{ hashFiles('renv.lock') }}
-          restore-keys: |
-            renv-
-      - name: Restore R packages with renv
-        run: |
-          Rscript -e "
-            options(repos = c(
-              stan = 'https://stan-dev.r-universe.dev',
-              ropensci = 'https://ropensci.r-universe.dev',
-              RSPM = 'https://packagemanager.posit.co/cran/2026-10-01',
-              CRAN = 'https://packagemanager.posit.co/cran/2026-10-01'
-            ))
-            if (!requireNamespace('renv', quietly = TRUE)) {
-              install.packages('renv', repos = 'https://cloud.r-project.org')
-            }
-            # Restore from lockfile mirrored from emma_docker. Missing packages
-            # install from the pinned P3M snapshot; already-present image
-            # packages are reused when versions match. Never call update.packages().
-            renv::restore(prompt = FALSE)
-          "
 
       - name: Check if previous runs exists
         id: runs-exist
@@ -114,15 +87,25 @@ jobs:
 
       - name: Run targets pt 1
         run: |
-          Sys.setenv(HOME="/home/rstudio")
-          cmdstanr::set_cmdstan_path("/home/rstudio/.cmdstanr/cmdstan-2.28.1")
+          Sys.setenv(HOME = "/home/rstudio")
+          # Prefer /opt (new image); fall back to legacy ~/.cmdstanr until DockerHub rebuilds.
+          candidates <- c(
+            Sys.getenv("CMDSTAN", unset = ""),
+            "/opt/cmdstan/current",
+            Sys.glob("/home/rstudio/.cmdstanr/cmdstan-*")
+          )
+          cmdstan_dir <- candidates[nzchar(candidates) & dir.exists(candidates)][1]
+          if (is.na(cmdstan_dir) || !nzchar(cmdstan_dir)) {
+            stop("CmdStan not found under /opt/cmdstan or /home/rstudio/.cmdstanr")
+          }
+          message("Using CmdStan at ", cmdstan_dir)
+          cmdstanr::set_cmdstan_path(cmdstan_dir)
           cmdstanr::check_cmdstan_toolchain()
-          #cmdstanr::install_cmdstan()
         shell: Rscript {0}
 
       - name: Run targets pt 2
         run: |
-          targets::tar_destroy(destroy = "all",ask = FALSE)
+          targets::tar_destroy(destroy = "all", ask = FALSE)
           targets::tar_make()
         shell: Rscript {0}
 
@@ -144,8 +127,8 @@ jobs:
           rm -r .github/workflows # .gitignore 
           git lfs track _targets/objects/* #use git LFS to track the targets output (larger files)
           # git lfs track "data/**"
-          git add --all -- ':!renv'
-          for file in $(git ls-files -mo --exclude=renv)
+          git add --all
+          for file in $(git ls-files -mo)
           do
             git add -f $file
           done
@@ -154,7 +137,7 @@ jobs:
 
       - name: Prepare failure artifact
         if: failure()
-        run: rm -rf .git .github .targets-files .${{ steps.extract_branch.outputs.branch }}-runs renv/library renv/cache
+        run: rm -rf .git .github .targets-files .${{ steps.extract_branch.outputs.branch }}-runs
 
       - name: Post failure artifact
         if: failure()

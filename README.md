@@ -2,6 +2,22 @@
 
 Draft reports can be found [here](https://adamwilsonlab.github.io/emma_report/)
 
+## Runtime: always use the emma Docker image
+
+Every pipeline / CI / interactive run uses
+[`adamwilsonlab/emma`](https://hub.docker.com/r/adamwilsonlab/emma)
+(built from [`eco-emma/emma_docker`](https://github.com/eco-emma/emma_docker)).
+There is **no host-side R or `renv::restore()`** path for this workflow.
+
+| Where | Command |
+|---|---|
+| Laptop | `docker run --rm -v "$PWD":/work -w /work -e GITHUB_PAT adamwilsonlab/emma:latest Rscript -e 'targets::tar_make()'` |
+| GitHub Actions | `container: adamwilsonlab/emma:latest` in `.github/workflows/targets.yaml` |
+| HPC (CCR) | `apptainer exec … AdamWilsonLab-emma_docker-latest.sif Rscript -e 'targets::tar_make()'` (see emma_docker README) |
+
+Package versions are pinned in the emma_docker **Dockerfile** (P3M snapshot).
+To bump packages, change that Dockerfile, rebuild/push the image, then re-run.
+
 # EMMA workflow overview
 
 The EMMA workflow consists of four modules, each with a separate Github repo:
@@ -52,6 +68,7 @@ Notes for report readers:
   - Replaced legacy AdamWilsonLab tags (`current`, `processed_static`, old MODIS VI tags, `processed_most_recent_burn_dates`, `raw_static`) and `cellID` / `stable_data.gz.parquet` assumptions.
   - Renamed all report product identifiers from the old vegetation-index naming to `evi` (targets, Quarto, paths, docs).
   - Added `R/envdata_contract.R` as the single source of release-tag and download helpers for the report pipeline.
+  - Runtime contract: always execute inside `adamwilsonlab/emma` (no host `renv` / `update.packages`); removed GEE from CI.
 * May 14, 2024
   - Added a new section to the README to describe the data used by the workflow and where it is stored.  Added a new section to describe the releases and what they contain.  Added a new section to describe the changelog.
 * May 13, 2024 - Significant updates to the report website including:

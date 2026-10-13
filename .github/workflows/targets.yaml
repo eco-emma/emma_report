@@ -54,9 +54,8 @@ jobs:
     container: adamwilsonlab/emma:latest
     env:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
-      # CmdStan is installed under /opt in the image (Singularity-safe)
-      CMDSTAN: /opt/cmdstan/current
-      CMDSTAN_PATH: /opt/cmdstan/current
+      # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
+      # the path and exports it via GITHUB_ENV for later steps.
     steps:
       - name: Extract branch name
         shell: bash
@@ -88,18 +87,31 @@ jobs:
       - name: Run targets pt 1
         run: |
           Sys.setenv(HOME = "/home/rstudio")
-          # Prefer /opt (new image); fall back to legacy ~/.cmdstanr until DockerHub rebuilds.
+          # Prefer /opt (new portable image); fall back to legacy ~/.cmdstanr.
           candidates <- c(
-            Sys.getenv("CMDSTAN", unset = ""),
             "/opt/cmdstan/current",
-            Sys.glob("/home/rstudio/.cmdstanr/cmdstan-*")
+            Sys.glob("/home/rstudio/.cmdstanr/cmdstan-*"),
+            Sys.glob("/opt/cmdstan/cmdstan-*")
           )
-          cmdstan_dir <- candidates[nzchar(candidates) & dir.exists(candidates)][1]
+          ok <- nzchar(candidates) & vapply(candidates, dir.exists, logical(1))
+          cmdstan_dir <- candidates[ok][1]
           if (is.na(cmdstan_dir) || !nzchar(cmdstan_dir)) {
             stop("CmdStan not found under /opt/cmdstan or /home/rstudio/.cmdstanr")
           }
           message("Using CmdStan at ", cmdstan_dir)
+          # Clear a stale/missing CMDSTAN from the job env, then set the real path
+          # for this process and subsequent workflow steps.
+          Sys.unsetenv("CMDSTAN")
+          Sys.unsetenv("CMDSTAN_PATH")
           cmdstanr::set_cmdstan_path(cmdstan_dir)
+          gh_env <- Sys.getenv("GITHUB_ENV", unset = "")
+          if (nzchar(gh_env)) {
+            cat(
+              sprintf("CMDSTAN=%s\nCMDSTAN_PATH=%s\n", cmdstan_dir, cmdstan_dir),
+              file = gh_env,
+              append = TRUE
+            )
+          }
           cmdstanr::check_cmdstan_toolchain()
         shell: Rscript {0}
 

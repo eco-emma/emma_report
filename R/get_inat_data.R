@@ -150,6 +150,10 @@ protected_areas <- st_as_sf(protected_areas)
       )
       return(
         sf::st_sf(
+          scientific_name = character(),
+          observed_on = as.Date(character()),
+          longitude = numeric(),
+          latitude = numeric(),
           invasive = logical(),
           geometry = sf::st_sfc(crs = "WGS84")
         )

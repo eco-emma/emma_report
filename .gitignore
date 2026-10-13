@@ -58,3 +58,12 @@ _site/
 docs/*
 site_libs/*
 *.html.md
+
+# renv
+renv/library/
+renv/local/
+renv/cellar/
+renv/lock/
+renv/python/
+renv/sandbox/
+renv/staging/

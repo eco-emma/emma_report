@@ -10,7 +10,7 @@ get_monthly_mean_evi.tif <- function(env_files,
 
   # Prefer the pre-fetched env_files listing; fall back to listing the parquet tag
   if (is.null(env_files) || !nrow(env_files)) {
-    env_files <- piggyback::pb_list(
+    env_files <- list_release_assets(
       repo = ENVDATA_REPO,
       tag = ENVDATA_RELEASE_TAGS$vi_modis_parquet
     )

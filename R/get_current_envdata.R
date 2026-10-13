@@ -29,12 +29,9 @@ get_env_files <- function(repo = ENVDATA_REPO,
       ENVDATA_RELEASE_TAGS$stac_burn
     )
   }
-  if (!requireNamespace("piggyback", quietly = TRUE)) {
-    stop("get_env_files() requires the piggyback package")
-  }
   rows <- lapply(tags, function(tag) {
     tryCatch(
-      piggyback::pb_list(repo = repo, tag = tag),
+      list_release_assets(repo = repo, tag = tag),
       error = function(e) {
         message("Skipping tag ", tag, ": ", conditionMessage(e))
         NULL
@@ -45,10 +42,32 @@ get_env_files <- function(repo = ENVDATA_REPO,
 }
 
 get_report_files <- function(repo = REPORT_REPO, create_park_tag = TRUE) {
-  report_files <- piggyback::pb_list(repo)
+  # List across known report tags; fall back to empty frame
+  tags <- tryCatch({
+    # releases listing via API
+    token <- Sys.getenv("GITHUB_PAT", unset = Sys.getenv("GITHUB_TOKEN", unset = ""))
+    headers <- c(Accept = "application/vnd.github+json", `User-Agent` = "eco-emma/emma_report")
+    if (nzchar(token)) headers <- c(headers, Authorization = paste("Bearer", token))
+    tf <- tempfile(fileext = ".json")
+    utils::download.file(
+      sprintf("https://api.github.com/repos/%s/releases?per_page=100", repo),
+      tf, quiet = TRUE, headers = headers
+    )
+    rels <- jsonlite::fromJSON(tf, simplifyVector = TRUE)
+    unlink(tf)
+    unique(as.character(rels$tag_name))
+  }, error = function(e) character())
+
+  rows <- lapply(tags, function(tag) {
+    tryCatch(list_release_assets(repo = repo, tag = tag), error = function(e) NULL)
+  })
+  report_files <- dplyr::bind_rows(rows)
   park_data_tag <- "park_data"
-  if (create_park_tag && !park_data_tag %in% report_files$tag) {
-    piggyback::pb_release_create(repo, tag = park_data_tag)
+  if (create_park_tag && (nrow(report_files) == 0L || !park_data_tag %in% report_files$tag)) {
+    tryCatch(
+      piggyback::pb_release_create(repo, tag = park_data_tag),
+      error = function(e) message("Could not create park_data release: ", conditionMessage(e))
+    )
   }
   report_files
 }

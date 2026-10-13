@@ -13,7 +13,8 @@ get_fire_history <- function(temp_directory = "data/temp/fire_history",
     dir.create(temp_directory, recursive = TRUE, showWarnings = FALSE)
   }
 
-  fire_assets <- piggyback::pb_list(
+  # Use GitHub API listing — piggyback::pb_list fails on large fireage releases
+  fire_assets <- list_release_assets(
     repo = ENVDATA_REPO,
     tag = ENVDATA_RELEASE_TAGS$fireage
   ) |>

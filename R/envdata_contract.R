@@ -300,13 +300,25 @@ get_latest_vi_stac_item <- function(collection_url = NULL) {
   read_json_url(latest_href)
 }
 
-#' Parse YYYYMMDD from a VI / fireage filename
+#' Parse YYYYMMDD from a VI / fireage filename (vectorized for dplyr::mutate)
 parse_envdata_yyyymmdd <- function(file_name) {
-  m <- regmatches(file_name, regexpr("20[0-9]{6}", file_name))
-  if (length(m) == 0L || !nzchar(m[[1]])) {
-    return(as.Date(NA))
+  file_name <- as.character(file_name)
+  n <- length(file_name)
+  out <- rep(as.Date(NA), n)
+  if (!n) {
+    return(out)
   }
-  as.Date(m[[1]], format = "%Y%m%d")
+  # Do not use regmatches(): it drops non-matches and shortens the vector.
+  # The old m[[1]] path returned a length-1 Date, so mutate() recycled the
+  # first filename's date onto every row and month filters found nothing.
+  m <- regexpr("20[0-9]{6}", file_name)
+  ok <- !is.na(m) & m > 0L
+  if (any(ok)) {
+    ml <- attr(m, "match.length")[ok]
+    extracted <- substring(file_name[ok], m[ok], m[ok] + ml - 1L)
+    out[ok] <- as.Date(extracted, format = "%Y%m%d")
+  }
+  out
 }
 
 #' Download domain.tif and return a SpatRaster

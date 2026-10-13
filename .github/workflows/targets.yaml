@@ -54,6 +54,8 @@ jobs:
     container: adamwilsonlab/emma:latest
     env:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
+      # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
+      GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
       # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
       # Push/schedule keep the full pipeline.
       EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}

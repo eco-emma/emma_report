@@ -58,9 +58,16 @@ jobs:
       # the path and exports it via GITHUB_ENV for later steps.
     steps:
       - name: Extract branch name
-        shell: bash
-        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
         id: extract_branch
+        shell: bash
+        run: |
+          # PRs use refs/pull/<n>/merge — head_ref is the real feature branch.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            branch="${GITHUB_HEAD_REF}"
+          else
+            branch="${GITHUB_REF_NAME}"
+          fi
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           lfs:  'true'
@@ -71,18 +78,46 @@ jobs:
         run: git lfs checkout
         continue-on-error: true
 
-      - name: Check if previous runs exists
-        id: runs-exist
-        run: git ls-remote --exit-code --heads origin ${{ steps.extract_branch.outputs.branch }}-runs
-        continue-on-error: true
+      # Prefer <branch>-runs; fall back to main-runs so PR cold starts are not
+      # forced through a full weather+website rebuild (OOM / lost communication).
+      - name: Resolve runs cache ref
+        id: runs-cache
+        shell: bash
+        run: |
+          branch="${{ steps.extract_branch.outputs.branch }}"
+          if git ls-remote --exit-code --heads origin "${branch}-runs"; then
+            echo "ref=${branch}-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=true" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin main-runs; then
+            echo "ref=main-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Checkout previous run
-        if: steps.runs-exist.outcome == 'success'
-        uses: actions/checkout@v2
+      - name: Checkout runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        uses: actions/checkout@v4
         with:
-          ref: ${{ steps.extract_branch.outputs.branch }}-runs
+          ref: ${{ steps.runs-cache.outputs.ref }}
           fetch-depth: 1
-          path: .${{ steps.extract_branch.outputs.branch }}-runs
+          path: .runs-cache
+          lfs: true
+
+      - name: Restore targets store from runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        run: |
+          git -C .runs-cache lfs checkout || true
+          if [ -d .runs-cache/_targets ]; then
+            rm -rf _targets
+            cp -a .runs-cache/_targets .
+            echo "Restored _targets from ${{ steps.runs-cache.outputs.ref }}"
+          else
+            echo "No _targets/ in runs cache; cold start"
+          fi
 
       - name: Run targets pt 1
         run: |
@@ -117,26 +152,37 @@ jobs:
 
       - name: Run targets pt 2
         run: |
-          targets::tar_destroy(destroy = "all", ask = FALSE)
+          Sys.setenv(
+            HOME = "/home/rstudio",
+            OMP_NUM_THREADS = "1",
+            OPENBLAS_NUM_THREADS = "1",
+            VECLIB_MAXIMUM_THREADS = "1"
+          )
+          # Incremental make. tar_destroy("all") cold builds (weather ~32m +
+          # website ~32m / ~570MB) starve the hosted runner ("lost communication").
           targets::tar_make()
         shell: Rscript {0}
 
       - name: Create the runs branch if it does not already exist
-        if: steps.runs-exist.outcome != 'success'
+        if: steps.runs-cache.outputs.is_branch_runs != 'true'
         run: git checkout --orphan ${{ steps.extract_branch.outputs.branch }}-runs
 
       - name: Put the worktree in the runs branch if the latter already exists
-        if: steps.runs-exist.outcome == 'success'
+        if: steps.runs-cache.outputs.is_branch_runs == 'true'
         run: |
-          rm -r .git
-          mv .${{ steps.extract_branch.outputs.branch }}-runs/.git .
-          rm -r .${{ steps.extract_branch.outputs.branch }}-runs
+          rm -rf .git
+          mv .runs-cache/.git .
+          rm -rf .runs-cache
+
+      - name: Cleanup main-runs cache worktree
+        if: steps.runs-cache.outputs.found == 'true' && steps.runs-cache.outputs.is_branch_runs != 'true'
+        run: rm -rf .runs-cache
 
       - name: Upload latest run
         run: |
           git config --local user.name "GitHub Actions"
           git config --local user.email "actions@github.com"
-          rm -r .github/workflows # .gitignore 
+          rm -rf .github/workflows # .gitignore 
           git lfs track _targets/objects/* #use git LFS to track the targets output (larger files)
           # git lfs track "data/**"
           git add --all
@@ -149,7 +195,7 @@ jobs:
 
       - name: Prepare failure artifact
         if: failure()
-        run: rm -rf .git .github .targets-files .${{ steps.extract_branch.outputs.branch }}-runs
+        run: rm -rf .git .github .targets-files .runs-cache
 
       - name: Post failure artifact
         if: failure()

@@ -1,4 +1,3 @@
-
 library(GSODR)
 library(tidyverse)
 library(lubridate)
@@ -80,6 +79,10 @@ get_stations_data <- function(temp_directory, protected_areas){
 
 update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
+    # Reports discard weather before 1970; do not download decades of unused years.
+    min_year <- 1970L
+    this_year <- year(Sys.Date())
+
     # # Download station data
       for(i in 1:nrow(stations)){
 
@@ -87,7 +90,13 @@ update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
         message("Downloading data for ",station_i,": station ", i, " of ", nrow(stations))
 
-        data_i <- robust_get_GSOD(years = as.numeric(stations$start_year[i]):year(Sys.Date()),
+        yr_start <- max(as.integer(stations$start_year[i]), min_year, na.rm = TRUE)
+        if (is.na(yr_start) || yr_start > this_year) {
+          message("Skipping station ", station_i, ": no years in [", min_year, ", ", this_year, "]")
+          next
+        }
+
+        data_i <- robust_get_GSOD(years = yr_start:this_year,
                            station = station_i,
                            max_attempts = max_attempts,
                            sleep_time = sleep_time)
@@ -127,8 +136,14 @@ update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
       }
 
-    weather_data = open_dataset(list.files(temp_directory,pattern = "gsod_",full=T)) |>
-      as_tibble()
+    gsod_files <- list.files(temp_directory, pattern = "gsod_", full.names = TRUE)
+    if (!length(gsod_files)) {
+      warning("No GSOD parquet files downloaded; returning empty weather_data")
+      return(tibble::tibble())
+    }
+
+    weather_data = open_dataset(gsod_files) |>
+      collect()
       # clean up temp files
 
         # unlink(file.path(temp_directory),
@@ -150,12 +165,19 @@ update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
 robust_get_GSOD <- function(years, station, max_attempts=10, sleep_time = 1){
 
+  years <- sort(unique(as.integer(years)))
+  years <- years[!is.na(years)]
+  if (!length(years)) {
+    return(NULL)
+  }
+
   n_attempts <- 1
 
   while(n_attempts <= max_attempts){
 
     message("attempt ", n_attempts, " of ", max_attempts,
-            " to download GSOD data for station ", station)
+            " to download GSOD data for station ", station,
+            " years ", min(years), "-", max(years))
 
     out_data <- tryCatch(get_GSOD(years = years,
                                   station = station),
@@ -170,6 +192,34 @@ robust_get_GSOD <- function(years, station, max_attempts=10, sleep_time = 1){
         if(nrow(out_data) == 0){ message("Empty dataframe downloaded, retrying") }
 
       }#if
+
+    # Permanent year-window mismatch: adjust once instead of burning all retries.
+    # GSODR: "This station, …, only provides data for years 2024 to 2024."
+    if (inherits(out_data, "error")) {
+      msg <- conditionMessage(out_data)
+      m <- regexec("years ([0-9]{4}) to ([0-9]{4})", msg)
+      r <- regmatches(msg, m)[[1]]
+      if (length(r) == 3L) {
+        avail <- as.integer(r[2]):as.integer(r[3])
+        new_years <- intersect(years, avail)
+        if (!length(new_years)) {
+          message(
+            "No overlapping GSOD years for station ", station,
+            " (available ", min(avail), "-", max(avail), "); skipping"
+          )
+          return(out_data)
+        }
+        if (!identical(new_years, years)) {
+          message(
+            "Adjusting GSOD years for station ", station, " to ",
+            min(new_years), "-", max(new_years)
+          )
+          years <- new_years
+          n_attempts <- n_attempts + 1L
+          next
+        }
+      }
+    }
 
 
     # send message if giving up
@@ -197,7 +247,3 @@ robust_get_GSOD <- function(years, station, max_attempts=10, sleep_time = 1){
 
 
 }
-
-
-
-

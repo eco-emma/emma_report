@@ -49,6 +49,10 @@ name: targets
 jobs:
   targets:
     runs-on: ubuntu-latest
+    # Push <branch>-runs after tar_make; default GITHUB_TOKEN is read-only on PRs.
+    permissions:
+      contents: write
+      actions: read
     # Always run inside the published emma image (laptop / GHA / Singularity share this tag).
     # Packages come from the image site-library — do not renv::restore() or update.packages().
     container: adamwilsonlab/emma:latest
@@ -77,6 +81,9 @@ jobs:
         with:
           lfs:  'true'
           fetch-depth: 0 # added
+          # Configure git remote with PAT so push of <branch>-runs is allowed.
+          # Without this, PR jobs push as github-actions[bot] and get 403.
+          token: ${{ secrets.GH_PAT_BSM }}
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
       - name: Checkout LFS objects
@@ -111,6 +118,7 @@ jobs:
           fetch-depth: 1
           path: .runs-cache
           lfs: true
+          token: ${{ secrets.GH_PAT_BSM }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
@@ -190,10 +198,16 @@ jobs:
         run: rm -rf .runs-cache
 
       - name: Upload latest run
+        # Pipeline success is the PR gate; push can still fail if PAT lacks write.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: |
           git config --local user.name "GitHub Actions"
           git config --local user.email "actions@github.com"
-          rm -rf .github/workflows # .gitignore 
+          # Force PAT credentials (checkout/.git may still be github-actions[bot]).
+          git remote set-url origin "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf .github/workflows # .gitignore
+          # Ephemeral downloads — keep _targets store only for cache reuse.
+          rm -rf data/temp
           git lfs track _targets/objects/* #use git LFS to track the targets output (larger files)
           # git lfs track "data/**"
           git add --all

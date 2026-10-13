@@ -9,8 +9,25 @@ if(F) tar_load(temp_directory,protected_areas)
 # Get the weather station metadata
 get_stations_data <- function(temp_directory, protected_areas){
 
-  # update station md
-  update_station_list_nonint()
+  # Prefer a fresh NOAA station list; fall back to GSODR's packaged copy if
+  # NCEI is down (HTTP 520 / content-type errors are common in CI).
+  update_ok <- tryCatch(
+    {
+      update_station_list_nonint()
+      TRUE
+    },
+    error = function(e) {
+      warning(
+        "Could not refresh NOAA isd-history.csv; using GSODR packaged station list. ",
+        conditionMessage(e),
+        call. = FALSE
+      )
+      FALSE
+    }
+  )
+  if (!isTRUE(update_ok)) {
+    message("Proceeding with packaged GSODR isd_history.rda")
+  }
 
   # Get list of stations
   load(system.file("extdata", "isd_history.rda", package = "GSODR"))

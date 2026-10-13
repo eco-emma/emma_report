@@ -66,4 +66,4 @@ Notes for report readers:
       - added a new target `report_qmd_dir` that generates all the park-level .qmd files prior to running the website build (so they are included in the site architecture)
       - condensed and enriched the time-since-fire plots
       - condensed the weather data into a three-panel linked dygraph (temp, precip, spi)
-  - The Google Earth api changed a few months ago and broke the automatic updates in emma_envdata.
+  - Historical note: an older Google Earth Engine path once broke envdata updates; GEE/`rgee`/`earthengine` have been removed from this report workflow (envdata now uses AppEEARS + GitHub Releases).

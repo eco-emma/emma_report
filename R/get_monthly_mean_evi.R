@@ -3,8 +3,8 @@ library(terra)
 #' Mean EVI for the current calendar month from vi_modis_parquet releases
 #'
 #' Parquet schema: pid, date, sensor, value (EVI × 100). Returns a SpatRaster
-#' on the domain grid in EVI units (value / 100), matching get_most_recent_ndvi.tif.
-get_monthly_mean_ndvi.tif <- function(env_files,
+#' on the domain grid in EVI units (value / 100), matching get_most_recent_evi.tif.
+get_monthly_mean_evi.tif <- function(env_files,
                                       temp_directory = "data/temp/",
                                       current_month = current_month) {
 

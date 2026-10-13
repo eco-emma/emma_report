@@ -8,7 +8,7 @@ create_stan_data <- function(data,dyndata,fit=1,predict=0){
     # subset dynamic data to just these cells
   dyndata2= dyndata %>%
     left_join(pid_lookup) %>%
-    filter(!is.na(pid),!is.na(ndvi),!is.na(age)) %>%
+    filter(!is.na(pid),!is.na(evi),!is.na(age)) %>%
     arrange(pid,date)
 
   # keep only x data for matrix multiplication in model
@@ -18,7 +18,7 @@ create_stan_data <- function(data,dyndata,fit=1,predict=0){
   stan_data =  list(
     N = nrow(dyndata2),
     J= nrow(data),
-    y_obs=dyndata2$ndvi, #select variable to model
+    y_obs=dyndata2$evi, #select variable to model
     age= dyndata2$age,
     pid=dyndata2$pid,
     firemonth=ifelse(is.na(dyndata2$firemonth),4,dyndata2$firemonth),

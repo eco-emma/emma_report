@@ -3,7 +3,7 @@
 #' Updated for fireage_* / vi_* parquet naming and `pid` join key.
 find_long_records <- function(env_files,
                               age_range = c(2, 10),
-                              ndvi_prob = 0.8,
+                              evi_prob = 0.8,
                               envdata_dir = "data/envdata") {
 
   age_paths <- list.files(
@@ -49,7 +49,7 @@ find_long_records <- function(env_files,
 
   keep_pixels <- long_aged_pixels |>
     dplyr::left_join(good_vi_pixels, by = "pid") |>
-    dplyr::filter(.data$n > (max_number_vi * ndvi_prob)) |>
+    dplyr::filter(.data$n > (max_number_vi * evi_prob)) |>
     dplyr::transmute(cellID = .data$pid, pid = .data$pid)
 
   keep_pixels

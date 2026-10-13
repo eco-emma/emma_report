@@ -128,40 +128,40 @@ tar_age(stations,
 ),
 
 
-#   tar_age(name = most_recent_ndvi_file,
-#           command = get_most_recent_ndvi_file(env_files),
+#   tar_age(name = most_recent_evi_file,
+#           command = get_most_recent_evi_file(env_files),
 #           age = as.difftime(7, units = "days"), #weekly updates
 # #          age = as.difftime(1, units = "days") #daily updates
 #   ),
   
     tar_age(
-    name    = most_recent_ndvi_file,
-    command = get_most_recent_ndvi_file(env_files),
+    name    = most_recent_evi_file,
+    command = get_most_recent_evi_file(env_files),
     age     = as.difftime(7, units = "days"),
   ),
   
-  tar_age(name = most_recent_ndvi_date,
-           command = get_most_recent_ndvi_date(most_recent_ndvi_file),
+  tar_age(name = most_recent_evi_date,
+           command = get_most_recent_evi_date(most_recent_evi_file),
            age = as.difftime(7, units = "days") #weekly updates
            #age = as.difftime(1, units = "days") #daily updates
            # age = as.difftime(0, units = "hours") #will update whenever run
            ),
   
-  tar_terra_rast(name = most_recent_ndvi.tif,
-          command = get_most_recent_ndvi.tif(most_recent_ndvi_file, temp_directory),
+  tar_terra_rast(name = most_recent_evi.tif,
+          command = get_most_recent_evi.tif(most_recent_evi_file, temp_directory),
           filetype="COG"),
 
 tar_target(
-  ndvi_export,
+  evi_export,
   {
     # 안전장치: SpatRaster인지 확인
-    stopifnot(inherits(most_recent_ndvi.tif, "SpatRaster"))
+    stopifnot(inherits(most_recent_evi.tif, "SpatRaster"))
 
-    out <- file.path("data/ndvi", "most_recent_ndvi.tif")
+    out <- file.path("data/evi", "most_recent_evi.tif")
     dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
 
     terra::writeRaster(
-      most_recent_ndvi.tif,
+      most_recent_evi.tif,
       filename = out,
       overwrite = TRUE,
       filetype = "COG",
@@ -170,8 +170,8 @@ tar_target(
 
     stopifnot(file.exists(out), file.info(out)$size > 0)
 
-    message("Files under data/ndvi:")
-    print(list.files("data/ndvi", full.names = TRUE, recursive = TRUE))
+    message("Files under data/evi:")
+    print(list.files("data/evi", full.names = TRUE, recursive = TRUE))
 
     out
   },
@@ -180,18 +180,18 @@ tar_target(
 
 
    tar_age(name = current_month,
-           command = lubridate::month(most_recent_ndvi_date),
+           command = lubridate::month(most_recent_evi_date),
            age = as.difftime(7, units = "days") #weekly updates
            #age = as.difftime(1, units = "days") #daily updates
            ),
 
-tar_terra_rast(name = monthly_mean_ndvi.tif,
-               command = get_monthly_mean_ndvi.tif(env_files,temp_directory,
+tar_terra_rast(name = monthly_mean_evi.tif,
+               command = get_monthly_mean_evi.tif(env_files,temp_directory,
                                                       current_month = current_month),
                filetype="COG"),
 
-tar_terra_rast(name = monthly_delta_ndvi.tif,
-               command = get_monthly_delta_ndvi.tif(most_recent_ndvi.tif,monthly_mean_ndvi.tif),
+tar_terra_rast(name = monthly_delta_evi.tif,
+               command = get_monthly_delta_evi.tif(most_recent_evi.tif,monthly_mean_evi.tif),
                filetype="COG"),
 
 tar_age(name = inat_data,

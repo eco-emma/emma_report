@@ -32,7 +32,7 @@ sync_envdata <- function(repo = ENVDATA_REPO,
     overwrite = TRUE
   )
 
-  latest <- get_most_recent_ndvi_file()
+  latest <- get_most_recent_evi_file()
   download_envdata_asset(
     tag = latest$tag[[1]],
     file = latest$file_name[[1]],

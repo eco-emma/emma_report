@@ -1,8 +1,7 @@
 #' Current envdata accessors for the report pipeline
 #'
 #' These functions consume the eco-emma/emma_envdata public release contract
-#' (see R/envdata_contract.R). Target names still say "ndvi" for continuity with
-#' the report Quarto templates, but the vegetation product is EVI.
+#' (see R/envdata_contract.R). Vegetation product is EVI throughout targets and report templates.
 
 get_temp_directory <- function(temp_directory = "data/temp") {
   if (!dir.exists(file.path(temp_directory))) {
@@ -112,7 +111,7 @@ generate_fires_vector <- function(years_since_fire.tif) {
 #'
 #' Returns a one-row tibble with file_name, tag, href, file_date for
 #' compatibility with existing targets.
-get_most_recent_ndvi_file <- function(env_files = NULL) {
+get_most_recent_evi_file <- function(env_files = NULL) {
   item <- get_latest_vi_stac_item()
   assets <- item$assets
   if (is.null(assets$modis_terra_vi)) {
@@ -128,14 +127,12 @@ get_most_recent_ndvi_file <- function(env_files = NULL) {
   )
 }
 
-#' Download and scale the most recent Terra EVI COG
-#'
-#' Output is EVI in approximate [-1, 1] units (integer storage was ×100).
-#' Target name remains most_recent_ndvi.tif for report template compatibility.
-get_most_recent_ndvi.tif <- function(most_recent_ndvi_file, temp_directory) {
+#' Download and scale the most recent Terra EVI COG to approximate [-1, 1] units
+#' (integer storage on release assets is ×100).
+get_most_recent_evi.tif <- function(most_recent_evi_file, temp_directory) {
   path <- download_envdata_asset(
-    tag = most_recent_ndvi_file$tag[[1]],
-    file = most_recent_ndvi_file$file_name[[1]],
+    tag = most_recent_evi_file$tag[[1]],
+    file = most_recent_evi_file$file_name[[1]],
     dest_dir = temp_directory,
     overwrite = TRUE
   )
@@ -151,28 +148,28 @@ get_most_recent_ndvi.tif <- function(most_recent_ndvi_file, temp_directory) {
   evi
 }
 
-get_most_recent_ndvi_date <- function(most_recent_ndvi_file) {
-  if ("file_date" %in% names(most_recent_ndvi_file) &&
-      !is.na(most_recent_ndvi_file$file_date[[1]])) {
-    return(most_recent_ndvi_file$file_date[[1]])
+get_most_recent_evi_date <- function(most_recent_evi_file) {
+  if ("file_date" %in% names(most_recent_evi_file) &&
+      !is.na(most_recent_evi_file$file_date[[1]])) {
+    return(most_recent_evi_file$file_date[[1]])
   }
-  parse_envdata_yyyymmdd(most_recent_ndvi_file$file_name[[1]])
+  parse_envdata_yyyymmdd(most_recent_evi_file$file_name[[1]])
 }
 
 #' Monthly mean EVI minus current observation (same units)
-get_monthly_delta_ndvi.tif <- function(most_recent_ndvi.tif, monthly_mean_ndvi.tif) {
-  monthly_delta_ndvi.tif <- most_recent_ndvi.tif - monthly_mean_ndvi.tif
+get_monthly_delta_evi.tif <- function(most_recent_evi.tif, monthly_mean_evi.tif) {
+  monthly_delta_evi.tif <- most_recent_evi.tif - monthly_mean_evi.tif
 
-  if (terra::crs(most_recent_ndvi.tif, proj = TRUE) !=
-      terra::crs(monthly_mean_ndvi.tif, proj = TRUE)) {
+  if (terra::crs(most_recent_evi.tif, proj = TRUE) !=
+      terra::crs(monthly_mean_evi.tif, proj = TRUE)) {
     stop("VI CRS mismatch")
   }
-  if (terra::ext(most_recent_ndvi.tif) != terra::ext(monthly_mean_ndvi.tif)) {
+  if (terra::ext(most_recent_evi.tif) != terra::ext(monthly_mean_evi.tif)) {
     stop("VI extent mismatch")
   }
-  if (terra::crs(monthly_delta_ndvi.tif, proj = TRUE) !=
-      terra::crs(most_recent_ndvi.tif, proj = TRUE)) {
-    terra::crs(monthly_delta_ndvi.tif) <- terra::crs(most_recent_ndvi.tif)
+  if (terra::crs(monthly_delta_evi.tif, proj = TRUE) !=
+      terra::crs(most_recent_evi.tif, proj = TRUE)) {
+    terra::crs(monthly_delta_evi.tif) <- terra::crs(most_recent_evi.tif)
   }
-  monthly_delta_ndvi.tif
+  monthly_delta_evi.tif
 }

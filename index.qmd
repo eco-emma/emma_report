@@ -36,10 +36,10 @@ tar_load(park_fire_history)
 tar_load(temp_directory)
 tar_load(years_since_fire.tif)
 tar_load(fires_wgs)
-tar_load(most_recent_ndvi.tif)
-tar_load(most_recent_ndvi_date)
-tar_load(monthly_mean_ndvi.tif)
-tar_load(monthly_delta_ndvi.tif)
+tar_load(most_recent_evi.tif)
+tar_load(most_recent_evi_date)
+tar_load(monthly_mean_evi.tif)
+tar_load(monthly_delta_evi.tif)
 tar_load(weather_data)
 tar_load(report_qmd_dir) # forces park qmds to run first
   
@@ -101,17 +101,17 @@ Click on a park below to view park specific reports.
 
 ```{r, echo=F, warning=F}
 
-protected_areas_monthly_delta_ndvi <- extract(monthly_delta_ndvi.tif,protected_areas,fun=quantile,na.rm=T) |> 
+protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_areas,fun=quantile,na.rm=T) |> 
   as_tibble() |> 
   select(-1) |> #drop the index
-  rename("Q0"="NDVI","Q25"="NDVI.1","Q50"="NDVI.2","Q75"="NDVI.3","Q100"="NDVI.4") |> 
+  rename("Q0"="EVI","Q25"="EVI.1","Q50"="EVI.2","Q75"="EVI.3","Q100"="EVI.4") |> 
   bind_cols(name=protected_areas$name)
 
 ```
 
 ```{r, echo=F, warning=F,fig.cap="Median value of the spatial vegetation anomalies of the past month compared to the mean values of the same month in prior years.  High values indicate higher than normal vegetation biomass while low values represent less vegetation than typical for this region. Parks are ordered from low to high. Click on the park in the map to see more detailed information."}
 
-protected_areas_monthly_delta_ndvi |> 
+protected_areas_monthly_delta_evi |> 
   filter(!is.na(Q50)) |> 
   mutate(name = fct_reorder(as.factor(name), Q50)) |> 
   ggplot(aes(y = name)) +
@@ -122,7 +122,7 @@ protected_areas_monthly_delta_ndvi |>
     # Median point
     geom_point(aes(x = Q50), size = 2, color = "black") +
     labs(
-      x = "Mean Vegetation Anomaly (NDVI)",
+      x = "Mean Vegetation Anomaly (EVI)",
       y = "Protected Area",
       title = "Distribution of Vegetation Anomalies",
       subtitle = "Showing full range (Q0–Q100), IQR (Q25–Q75), and median (Q50)"
@@ -172,7 +172,7 @@ See table below for dates each dataset was last updated and download links.
 
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(Description = "NDVI", Date = format(most_recent_ndvi_date, "%Y-%b-%d")),
+  data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
   data.frame(Description = "Weather", Date = format(max(weather_data$YEARMODA), "%Y-%b-%d"))
 ) |> 
   select(Description, "Date last updated"=Date)

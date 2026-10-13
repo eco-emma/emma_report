@@ -2,7 +2,7 @@
 #'
 #' Downstream consumers should read from eco-emma/emma_envdata GitHub Releases
 #' (and the STAC catalog), not the legacy AdamWilsonLab `current` /
-#' `processed_static` / `clean_ndvi_modis` tags.
+#' `processed_static` / old MODIS VI release tags.
 #'
 #' Join key for tabular products: `pid` (int32). Vegetation product is EVI
 #' stored as integer × 100 (scale 0.01) in both COG band 1 and parquet `value`.

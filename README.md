@@ -35,7 +35,7 @@ STAC root: https://github.com/eco-emma/emma_envdata/releases/download/stac/catal
 Notes for report readers:
 
 - Tabular join key is **`pid`** (legacy `cellID` is aliased where needed).
-- Vegetation product is **EVI** (report targets still named `*_ndvi*` for template compatibility).
+- Vegetation product is **EVI** (targets, paths, and report labels use `evi`).
 - EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
 - Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
 
@@ -49,7 +49,8 @@ Notes for report readers:
 
 * Oct 2026
   - Migrated envdata consumption to the eco-emma public release/STAC contract (`static_data`, `vi_*`, `fireage`, `stac*`).
-  - Replaced legacy AdamWilsonLab tags (`current`, `processed_static`, `clean_ndvi_modis`, `processed_most_recent_burn_dates`, `raw_static`) and `cellID` / `stable_data.gz.parquet` assumptions.
+  - Replaced legacy AdamWilsonLab tags (`current`, `processed_static`, old MODIS VI tags, `processed_most_recent_burn_dates`, `raw_static`) and `cellID` / `stable_data.gz.parquet` assumptions.
+  - Renamed all report product identifiers from the old vegetation-index naming to `evi` (targets, Quarto, paths, docs).
   - Added `R/envdata_contract.R` as the single source of release-tag and download helpers for the report pipeline.
 * May 14, 2024
   - Added a new section to the README to describe the data used by the workflow and where it is stored.  Added a new section to describe the releases and what they contain.  Added a new section to describe the changelog.

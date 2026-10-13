@@ -33,15 +33,15 @@ tar_load(park_fire_history)
 tar_load(temp_directory)
 tar_load(years_since_fire.tif)
 tar_load(fires_wgs)
-tar_load(most_recent_ndvi.tif)
-tar_load(most_recent_ndvi_date)
-tar_load(monthly_mean_ndvi.tif)
-tar_load(monthly_delta_ndvi.tif)
+tar_load(most_recent_evi.tif)
+tar_load(most_recent_evi_date)
+tar_load(monthly_mean_evi.tif)
+tar_load(monthly_delta_evi.tif)
 tar_load(weather_data)
-#tar_load(mean_ndvi.tif)
-#tar_load(delta_ndvi.tif)
-#tar_load(most_recent_quarter_ndvi_file)
-#tar_load(quarterly_delta_ndvi.tif)
+#tar_load(mean_evi.tif)
+#tar_load(delta_evi.tif)
+#tar_load(most_recent_quarter_evi_file)
+#tar_load(quarterly_delta_evi.tif)
 tar_load(stations)
 tar_load(inat_data)
 
@@ -226,17 +226,17 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
                           domain = fires_wgs_truncated$Years,reverse = FALSE)
   
   
-  ndvi_pal <- colorNumeric(palette = c( "#FFFFCC", "#41B6C4","#0C2C84"),
-                           #domain =  values(most_recent_ndvi.tif),
+  evi_pal <- colorNumeric(palette = c( "#FFFFCC", "#41B6C4","#0C2C84"),
+                           #domain =  values(most_recent_evi.tif),
                            domain =  c(-1,0,1),
                            na.color = "transparent")
   
-  #max_delta_ndvi <- max(abs(values(delta_ndvi.tif)),na.rm = TRUE)
-  max_delta_ndvi <- max(abs(values(monthly_delta_ndvi.tif)),na.rm = TRUE)
+  #max_delta_evi <- max(abs(values(delta_evi.tif)),na.rm = TRUE)
+  max_delta_evi <- max(abs(values(monthly_delta_evi.tif)),na.rm = TRUE)
   
-  delta_ndvi_pal <- colorNumeric(palette = c( "brown", "white","forestgreen"),
-                                 #domain =  values(most_recent_ndvi.tif),
-                                 domain =  c(max_delta_ndvi*-1,max_delta_ndvi),
+  delta_evi_pal <- colorNumeric(palette = c( "brown", "white","forestgreen"),
+                                 #domain =  values(most_recent_evi.tif),
+                                 domain =  c(max_delta_evi*-1,max_delta_evi),
                                  na.color = "transparent")
 
   ndwi_pal <- colorNumeric(palette = c( "#FFFFCC", "#41B6C4","#0C2C84"),
@@ -534,10 +534,10 @@ if(nrow(focal_invasives) == 0){
 # `r focal_park_name`
 
 
-## NDVI and Time Since Fire
+## EVI and Time Since Fire
 
 
-```{r ndvi_and_burns, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
+```{r evi_and_burns, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
   leaflet(data = focal_wgs) %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
@@ -547,19 +547,19 @@ if(nrow(focal_invasives) == 0){
               stroke = TRUE,
               fill = FALSE,
               group = "Park") %>%
-  addRasterImage(x = raster::raster(most_recent_ndvi.tif),
-                 group = "NDVI",
-                 colors = ndvi_pal) %>%
-    # addRasterImage(x = raster::raster(delta_ndvi.tif),
-    #              group = "delta NDVI<br/>(long-term)",
-    #              colors = delta_ndvi_pal) %>%
-  # addRasterImage(x = raster::raster(quarterly_delta_ndvi.tif),
-  #              group = "delta NDVI<br/>(quarterly)",
-  #              colors = delta_ndvi_pal) %>%
-  addRasterImage(x = raster::raster(monthly_delta_ndvi.tif),
-                 group = "delta NDVI<br/>(monthly)",
-                 colors = delta_ndvi_pal) %>%
-  hideGroup("delta NDVI<br/>(quarterly)") %>%
+  addRasterImage(x = raster::raster(most_recent_evi.tif),
+                 group = "EVI",
+                 colors = evi_pal) %>%
+    # addRasterImage(x = raster::raster(delta_evi.tif),
+    #              group = "delta EVI<br/>(long-term)",
+    #              colors = delta_evi_pal) %>%
+  # addRasterImage(x = raster::raster(quarterly_delta_evi.tif),
+  #              group = "delta EVI<br/>(quarterly)",
+  #              colors = delta_evi_pal) %>%
+  addRasterImage(x = raster::raster(monthly_delta_evi.tif),
+                 group = "delta EVI<br/>(monthly)",
+                 colors = delta_evi_pal) %>%
+  hideGroup("delta EVI<br/>(quarterly)") %>%
   
   # Add recent invasive species
    
@@ -593,24 +593,24 @@ if(nrow(focal_invasives) == 0){
   
     hideGroup("Stations") %>%
     hideGroup("Invasives (new)") %>%
-    hideGroup("NDVI") %>%
-    hideGroup("delta NDVI<br/>(long-term)") %>%
+    hideGroup("EVI") %>%
+    hideGroup("delta EVI<br/>(long-term)") %>%
   
     # add legends
   
     leaflet::addLegend(position = "topright",
-                     pal = delta_ndvi_pal,          
-                     values = ~values(monthly_delta_ndvi.tif),
+                     pal = delta_evi_pal,          
+                     values = ~values(monthly_delta_evi.tif),
                      #values = ~c(-1,1),
                      opacity = 1,
-                     title = "delta<br/>NDVI") %>%
+                     title = "delta<br/>EVI") %>%
   
     leaflet::addLegend(position = "topright",
-            pal = ndvi_pal,          
-            values = ~values(raster::raster(most_recent_ndvi.tif)),
+            pal = evi_pal,          
+            values = ~values(raster::raster(most_recent_evi.tif)),
             #values = ~c(-1,1),
             opacity = 1,
-            title = "NDVI") %>%
+            title = "EVI") %>%
 
     addLegend_decreasing(position = "bottomright",
             pal = pal,
@@ -622,10 +622,10 @@ if(nrow(focal_invasives) == 0){
     baseGroups = c("NatGeo","World Imagery"),
     overlayGroups = c("Park",
                       "Stations",
-                      "delta NDVI<br/>(monthly)",
-                      "delta NDVI<br/>(long-term)",
-                      #"delta NDVI<br/>(quarterly)",
-                      "NDVI",
+                      "delta EVI<br/>(monthly)",
+                      "delta EVI<br/>(long-term)",
+                      #"delta EVI<br/>(quarterly)",
+                      "EVI",
                       "Fire Outlines",
                       "Fires",
                       "Invasives (new)"
@@ -635,7 +635,7 @@ if(nrow(focal_invasives) == 0){
 
 ```
 
-Figure 1. Leaflet map showing delta vegetation index (EVI; targets still named NDVI for continuity), current EVI, number of years since the most recent fire, and recent invasive species records. NA values in the delta and EVI layers indicate missing data (e.g. due to clouds, water, etc.). Monthly delta EVI is the difference between the latest MODIS Terra composite and the long-term mean for the same calendar month. EVI data are from `r most_recent_ndvi_date` (`vi_modis_terra_raster` via STAC). NA values in the fire layer indicate that no fires have been recorded for that area. Note that the color scale for fires has been truncated, and any sites with more than 20 years since fire appear as 20. The number of years since fire can be seen by hovering your cursor over the polygon of interest. Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif).
+Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the most recent fire, and recent invasive species records. NA values in the delta and EVI layers indicate missing data (e.g. due to clouds, water, etc.). Monthly delta EVI is the difference between the latest MODIS Terra composite and the long-term mean for the same calendar month. EVI data are from `r most_recent_evi_date` (`vi_modis_terra_raster` via STAC). NA values in the fire layer indicate that no fires have been recorded for that area. Note that the color scale for fires has been truncated, and any sites with more than 20 years since fire appear as 20. The number of years since fire can be seen by hovering your cursor over the polygon of interest. Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif).
 
 ## Area burned and vegetation ages
 
@@ -645,9 +645,9 @@ Figure 1. Leaflet map showing delta vegetation index (EVI; targets still named N
 
 # Subset park_fire_history to only the focal park
 
-  # use the ndvi raster as a template to get cells in park
+  # use the evi raster as a template to get cells in park
 
-    most_recent_ndvi.tif %>%
+    most_recent_evi.tif %>%
       terra::extract(y = vect(focal_park),
                      cells = TRUE,
                      touches = TRUE) %>%
@@ -1050,7 +1050,7 @@ This table summarizes the date this report was generated and the most recent obs
 
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(Description = "NDVI", Date = format(most_recent_ndvi_date, "%Y-%b-%d")),
+  data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
   data.frame(Description = "Weather", Date = format(max(focal_weather$date_time), "%Y-%b-%d"))
 ) |> 
   select(Description, "Date last updated"=Date)

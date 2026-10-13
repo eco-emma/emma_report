@@ -57,7 +57,7 @@ tidy_dynamic_data <- function(data, date_window, envdata_dir = "data/envdata") {
         lubridate::month(lubridate::as_date(.data$last_burn_date))
       ),
       date = lubridate::as_date(.data$date),
-      ndvi = scale_evi_integer(.data$value), # EVI; kept as ndvi for model glue
+      evi = scale_evi_integer(.data$value), # vegetation index column
       age = .data$fire_age_days / 365.23
     ) |>
     tibble::as_tibble()

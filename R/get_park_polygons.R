@@ -39,18 +39,9 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
       dir.create(temp_directory, recursive = TRUE)
     }
 
-  # Download domain
+  # Domain outline from static_data/domain.tif (replaces legacy raw_static/domain.gpkg)
 
-    robust_pb_download(file = "domain.gpkg",
-                tag = "raw_static",
-                repo = "AdamWilsonLab/emma_envdata",
-                dest = file.path(temp_directory),
-                max_attempts = 10,
-                sleep_time = 10)
-
-  # Read domain
-
-    domain <- st_read(file.path(temp_directory, "domain.gpkg"))
+    domain <- get_domain_polygon(dest_dir = temp_directory, overwrite = FALSE)
 
   # Match projections
 
@@ -97,15 +88,8 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
       mutate(area_ha = drop_units(set_units(st_area(geometry), ha)))
 
 
-  # update projection
-    robust_pb_download(file = "template.tif",
-                dest = file.path(temp_directory),
-                repo = "AdamWilsonLab/emma_envdata",
-                tag = "processed_static",
-                max_attempts = 10,
-                sleep_time = 10)
-
-    template <- terra::rast(file.path(temp_directory,"template.tif"))
+  # Align parks to the published domain grid CRS (EPSG:9221 Albers)
+    template <- get_domain_raster(dest_dir = temp_directory, overwrite = FALSE)
 
     protected_areas <-
     st_transform(x = protected_areas,
@@ -122,7 +106,7 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
     # release gpkg
 
       robust_pb_upload(file = file.path(temp_directory, "protected_areas.gpkg"),
-                       repo = "AdamWilsonLab/emma_report",
+                       repo = REPORT_REPO,
                        tag = park_data_tag)
 
       file.remove(file.path(temp_directory, "protected_areas.gpkg"))

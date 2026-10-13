@@ -11,8 +11,8 @@ library(ggplot2)
 source("R/get_park_polygons.R")
 
 #library(targets)
-#tar_load(monthly_mean_ndvi)
-#tar_load(most_recent_ndvi_date)
+#tar_load(monthly_mean_evi)
+#tar_load(most_recent_evi_date)
 #tar_load(parks)
 #tar_load(remnants)
 #tar_load(park_fire_history)
@@ -22,10 +22,10 @@ source("R/get_park_polygons.R")
 #' @param invasive_taxa Taxa names to filter the inat data by.  Works by str_detect, so Genera or partial names are fine. If NULL will use all taxa
 generate_reports <- function(output_directory = "reports/",
                              temp_directory = "data/temp/reports",
-                             temp_directory_ndvi = "data/temp/ndvi",
+                             temp_directory_evi = "data/temp/evi",
                              report_location = "report_prototype.qmd",
-                             monthly_mean_ndvi = monthly_mean_ndvi,
-                             most_recent_ndvi_date= most_recent_ndvi_date,
+                             monthly_mean_evi = monthly_mean_evi,
+                             most_recent_evi_date= most_recent_evi_date,
                              park_data_tag = "park_data",
                              time_window_days = 120,
                              n_stations = 3,
@@ -88,7 +88,7 @@ generate_reports <- function(output_directory = "reports/",
 
     if(!park_data_tag %in% report_files$tag){
 
-      pb_release_create(repo = "AdamWilsonLab/emma_report",
+      pb_release_create(repo = REPORT_REPO,
                         tag = park_data_tag)
 
     }
@@ -142,7 +142,7 @@ generate_reports <- function(output_directory = "reports/",
 
     #clean up temp directory
       unlink(file.path(temp_directory), recursive = TRUE, force = TRUE)
-      unlink(file.path(temp_directory_ndvi), recursive = TRUE, force = TRUE)
+      unlink(file.path(temp_directory_evi), recursive = TRUE, force = TRUE)
 
 
 

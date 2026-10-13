@@ -18,10 +18,15 @@ library(units)
 # }
 
 #library(stantargets)
-source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_download.R")
-source("https://raw.githubusercontent.com/AdamWilsonLab/emma_envdata/main/R/robust_pb_upload.R")
-# source all files in R folder
-lapply(list.files("R",pattern="[.]R",full.names = T)[-4], source)
+# Envdata download/upload helpers and release-tag contract live in R/envdata_contract.R
+# (sourced below). Do not source deleted AdamWilsonLab robust_pb_*.R URLs.
+# source all files in R folder (skip filter_training_data.R — historical exclusion)
+r_files <- list.files("R", pattern = "[.]R$", full.names = TRUE)
+r_files <- r_files[!grepl("filter_training_data[.]R$", basename(r_files))]
+# Load contract first so ENVDATA_* constants exist for other R/ files
+contract <- r_files[grepl("envdata_contract[.]R$", basename(r_files))]
+other <- setdiff(r_files, contract)
+lapply(c(contract, other), source)
 
 options(tidyverse.quiet = TRUE)
 options(clustermq.scheduler = "multicore")
@@ -30,7 +35,7 @@ geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 tar_option_set(packages = c("piggyback","cmdstanr", "posterior", "bayesplot", "tidyverse",
                             "stringr","knitr","sf","stars","units","arrow","lubridate","stantargets",
                             "doParallel","raster","quarto","tarchetypes",
-                            "targets","doParallel","plotly","leaflet", "gt"),
+                            "targets","doParallel","plotly","leaflet", "gt", "jsonlite", "terra"),
                deployment="main")
 
 # push intermediate products to github release?
@@ -38,6 +43,7 @@ piggyback_push = F
 
 sleep_time = 10
 max_attempts = 10
+# Legacy report-output tag (emma_report releases). Envdata inputs use ENVDATA_RELEASE_TAGS.
 tag = "current"
 min_date = "1970-01-01"
 
@@ -82,10 +88,11 @@ list(
   #             command = get_env_files()
   #             ),
 
+  # Refresh release asset listing daily (static_data, vi_*, fireage, stac-*, …)
   tar_age(
         name    = env_files,
         command = get_env_files(),
-        age     = as.difftime(1, units = "days")   # 하루마다 목록 새로 가져오기
+        age     = as.difftime(1, units = "days")
       ),
   #   tar_target(
   #   env_files,
@@ -121,40 +128,40 @@ tar_age(stations,
 ),
 
 
-#   tar_age(name = most_recent_ndvi_file,
-#           command = get_most_recent_ndvi_file(env_files),
+#   tar_age(name = most_recent_evi_file,
+#           command = get_most_recent_evi_file(env_files),
 #           age = as.difftime(7, units = "days"), #weekly updates
 # #          age = as.difftime(1, units = "days") #daily updates
 #   ),
   
     tar_age(
-    name    = most_recent_ndvi_file,
-    command = get_most_recent_ndvi_file(env_files),
+    name    = most_recent_evi_file,
+    command = get_most_recent_evi_file(env_files),
     age     = as.difftime(7, units = "days"),
   ),
   
-  tar_age(name = most_recent_ndvi_date,
-           command = get_most_recent_ndvi_date(most_recent_ndvi_file),
+  tar_age(name = most_recent_evi_date,
+           command = get_most_recent_evi_date(most_recent_evi_file),
            age = as.difftime(7, units = "days") #weekly updates
            #age = as.difftime(1, units = "days") #daily updates
            # age = as.difftime(0, units = "hours") #will update whenever run
            ),
   
-  tar_terra_rast(name = most_recent_ndvi.tif,
-          command = get_most_recent_ndvi.tif(most_recent_ndvi_file, temp_directory),
+  tar_terra_rast(name = most_recent_evi.tif,
+          command = get_most_recent_evi.tif(most_recent_evi_file, temp_directory),
           filetype="COG"),
 
 tar_target(
-  ndvi_export,
+  evi_export,
   {
     # 안전장치: SpatRaster인지 확인
-    stopifnot(inherits(most_recent_ndvi.tif, "SpatRaster"))
+    stopifnot(inherits(most_recent_evi.tif, "SpatRaster"))
 
-    out <- file.path("data/ndvi", "most_recent_ndvi.tif")
+    out <- file.path("data/evi", "most_recent_evi.tif")
     dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
 
     terra::writeRaster(
-      most_recent_ndvi.tif,
+      most_recent_evi.tif,
       filename = out,
       overwrite = TRUE,
       filetype = "COG",
@@ -163,8 +170,8 @@ tar_target(
 
     stopifnot(file.exists(out), file.info(out)$size > 0)
 
-    message("Files under data/ndvi:")
-    print(list.files("data/ndvi", full.names = TRUE, recursive = TRUE))
+    message("Files under data/evi:")
+    print(list.files("data/evi", full.names = TRUE, recursive = TRUE))
 
     out
   },
@@ -173,18 +180,18 @@ tar_target(
 
 
    tar_age(name = current_month,
-           command = lubridate::month(most_recent_ndvi_date),
+           command = lubridate::month(most_recent_evi_date),
            age = as.difftime(7, units = "days") #weekly updates
            #age = as.difftime(1, units = "days") #daily updates
            ),
 
-tar_terra_rast(name = monthly_mean_ndvi.tif,
-               command = get_monthly_mean_ndvi.tif(env_files,temp_directory,
+tar_terra_rast(name = monthly_mean_evi.tif,
+               command = get_monthly_mean_evi.tif(env_files,temp_directory,
                                                       current_month = current_month),
                filetype="COG"),
 
-tar_terra_rast(name = monthly_delta_ndvi.tif,
-               command = get_monthly_delta_ndvi.tif(most_recent_ndvi.tif,monthly_mean_ndvi.tif),
+tar_terra_rast(name = monthly_delta_evi.tif,
+               command = get_monthly_delta_evi.tif(most_recent_evi.tif,monthly_mean_evi.tif),
                filetype="COG"),
 
 tar_age(name = inat_data,

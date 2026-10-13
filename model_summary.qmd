@@ -24,13 +24,13 @@ library(gt)
 
 # Model Overview
 
-The details are given in [@slingsby_near-real_2020; @wilson_climatic_2015], but in short what we do is estimate the age of a site by calculating the years since the last fire. We then fit a curve to model the recovery of vegetation (measured using NDVI) as a function of it's age. For this we use a negative exponential curve with the following form:
+The details are given in [@slingsby_near-real_2020; @wilson_climatic_2015], but in short what we do is estimate the age of a site by calculating the years since the last fire. We then fit a curve to model the recovery of vegetation (measured using EVI) as a function of it's age. For this we use a negative exponential curve with the following form:
 
 $$\mu_{i,t}=\alpha_i+\gamma_i\Big(1-e^{-\frac{age_{i,t}}{\lambda_i}}\Big)$$
 
-where $\mu_{i,t}$ is the expected NDVI for site $i$ at time $t$
+where $\mu_{i,t}$ is the expected EVI for site $i$ at time $t$
 
-The observed greenness $NDVI_{i,t}$ is assumed to follow a normal distribution with mean $\mu_{i,t}$ $$NDVI_{i,t}\sim\mathcal{N}(\mu_{i,t},\sigma_)$$
+The observed greenness $EVI_{i,t}$ is assumed to follow a normal distribution with mean $\mu_{i,t}$ $$EVI_{i,t}\sim\mathcal{N}(\mu_{i,t},\sigma_)$$
 
 An additional level models the parameters of the negative exponential curve as a function of environmental variables. This means that sites with similar environmental conditions should have similar recovery curves.
 
@@ -76,7 +76,7 @@ model_prediction %>%
   geom_line(aes(y=y_obs),colour="black",lwd=0.5,alpha=0.3) +
   geom_ribbon(aes(ymin=q5,ymax=q95),alpha=0.5)+
   facet_wrap(~cellID) +
-  labs(x="time since fire (years)",y="NDVI") +
+  labs(x="time since fire (years)",y="EVI") +
   theme_bw()
 ```
 

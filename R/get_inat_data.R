@@ -45,17 +45,7 @@ protected_areas <- st_as_sf(protected_areas)
 
     if(verbose){message("Getting domain")}
 
-    #env_files <- pb_list(repo = "AdamWilsonLab/emma_envdata")
-
-    robust_pb_download(file = "domain.gpkg",
-                       dest = file.path(temp_directory),
-                       repo = "AdamWilsonLab/emma_envdata",
-                       tag = "raw_static",
-                       overwrite = TRUE,
-                       max_attempts = max_attempts,
-                       sleep_time = sleep_time)
-
-    domain <- st_read(file.path(temp_directory,"domain.gpkg"))%>%
+    domain <- get_domain_polygon(dest_dir = temp_directory, overwrite = TRUE) %>%
       st_transform("WGS84")
 
   # combine sa_parks shapefiles into one, buffer, and union with domain

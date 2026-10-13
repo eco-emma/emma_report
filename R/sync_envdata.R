@@ -1,23 +1,45 @@
+#' Sync a working set of emma_envdata release assets into a local folder
+#'
+#' Replaces the legacy `tag = "current"` bulk download. Pulls static domain
+#' products plus the latest Terra VI COG and fireage snapshot.
+sync_envdata <- function(repo = ENVDATA_REPO,
+                         path = "data/envdata/") {
 
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  }
 
-sync_envdata <- function(repo="AdamWilsonLab/emma_envdata",
-                         path="data/envdata/")  {
+  static_files <- c(
+    "domain.tif",
+    "domain.parquet",
+    "static_covariates.parquet"
+  )
+  for (f in static_files) {
+    download_envdata_asset(
+      tag = ENVDATA_RELEASE_TAGS$static,
+      file = f,
+      dest_dir = path,
+      repo = repo,
+      overwrite = FALSE
+    )
+  }
 
-  # if running on github - delete the data files and get them again
-  #if(Sys.getenv("CI")!="") file.remove(list.files(path,full=T)) # delete all old files
+  download_envdata_asset(
+    tag = ENVDATA_RELEASE_TAGS$fireage,
+    file = "fireage_current.tif",
+    dest_dir = path,
+    repo = repo,
+    overwrite = TRUE
+  )
 
-  # piggyback::pb_download(repo = repo,
-  #                        tag = "current",
-  #                        dest = path,
-  #                        overwrite = F,
-  #                        show_progress = F)
-  #
+  latest <- get_most_recent_evi_file()
+  download_envdata_asset(
+    tag = latest$tag[[1]],
+    file = latest$file_name[[1]],
+    dest_dir = path,
+    repo = repo,
+    overwrite = TRUE
+  )
 
-    robust_pb_download(repo=repo,
-                        tag = "current",
-                        dest = path,
-                      overwrite = F)
-
-
-    return(path)
+  invisible(path)
 }

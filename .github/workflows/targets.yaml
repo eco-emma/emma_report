@@ -54,6 +54,9 @@ jobs:
     container: adamwilsonlab/emma:latest
     env:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
+      # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
+      # Push/schedule keep the full pipeline.
+      EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
       # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
       # the path and exports it via GITHUB_ENV for later steps.
     steps:
@@ -157,6 +160,12 @@ jobs:
             OMP_NUM_THREADS = "1",
             OPENBLAS_NUM_THREADS = "1",
             VECLIB_MAXIMUM_THREADS = "1"
+          )
+          message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
+          outdated <- tryCatch(targets::tar_outdated(), error = function(e) character())
+          message(
+            "Cache check: ", length(outdated), " outdated target(s)",
+            if (length(outdated)) paste0(": ", paste(outdated, collapse = ", ")) else ""
           )
           # Incremental make. tar_destroy("all") cold builds (weather ~32m +
           # website ~32m / ~570MB) starve the hosted runner ("lost communication").

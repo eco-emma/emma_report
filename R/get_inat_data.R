@@ -41,6 +41,75 @@ protected_areas <- st_as_sf(protected_areas)
     }
 
 
+  # Read in original inat project data
+
+    if(verbose){message("Getting original inat data")}
+
+    inat_proj_data <- read.csv(inat_data_location)
+
+    species_list <-
+    inat_proj_data %>%
+      pull(scientific_name)%>%
+      unique()
+
+    # Get all species in invasive taxa
+    invasive_species=grep(species_list, pattern = paste(invasive_taxa, collapse="|"),value=T)
+
+  # PR / light CI: skip live API + heavy park union (OOM-killed callr on GHA).
+  # Build invasive records from the CSV seed with a cheap bbox filter instead.
+  if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+    message(
+      "EMMA_CI_LIGHT=1: building inat_data from CSV seed only (",
+      length(invasive_species), " invasive taxa names); no live iNaturalist API"
+    )
+    inv <- inat_proj_data %>%
+      filter(
+        .data$scientific_name %in% invasive_species,
+        .data$observed_on > oldest_date,
+        !is.na(.data$longitude),
+        !is.na(.data$latitude)
+      )
+    if (!nrow(inv)) {
+      warning(
+        "EMMA_CI_LIGHT CSV seed had no invasive rows; returning empty sf.",
+        call. = FALSE
+      )
+      return(
+        sf::st_sf(
+          scientific_name = character(),
+          observed_on = as.Date(character()),
+          longitude = numeric(),
+          latitude = numeric(),
+          invasive = logical(),
+          geometry = sf::st_sfc(crs = "WGS84")
+        )
+      )
+    }
+    inv_sf <- inv %>%
+      st_as_sf(
+        coords = c("longitude", "latitude"),
+        remove = FALSE,
+        crs = "WGS84"
+      )
+    parks_bb <- protected_areas %>%
+      st_transform("WGS84") %>%
+      st_bbox() %>%
+      st_as_sfc()
+    inv_sf <- inv_sf[lengths(st_intersects(inv_sf, parks_bb)) > 0L, ]
+    inv_sf <- inv_sf %>%
+      mutate(invasive = TRUE) %>%
+      dplyr::select(
+        "scientific_name",
+        "observed_on",
+        "longitude",
+        "latitude",
+        "invasive",
+        "geometry"
+      )
+    message("EMMA_CI_LIGHT inat_data rows: ", nrow(inv_sf))
+    return(inv_sf)
+  }
+
   # get domain
 
     if(verbose){message("Getting domain")}
@@ -60,22 +129,7 @@ protected_areas <- st_as_sf(protected_areas)
       st_buffer(dist = park_buffer) %>%
       st_union(domain)-> parks_and_domain
 
-  # Read in original inat project data
-
-    if(verbose){message("Getting original inat data")}
-
-    inat_proj_data <- read.csv(inat_data_location)
-
-    species_list <-
-    inat_proj_data %>%
-      pull(scientific_name)%>%
-      unique()
-
     full_records <-NULL
-
-    # Get all species in invasive taxa
-    invasive_species=grep(species_list, pattern = paste(invasive_taxa, collapse="|"),value=T)
-
 
   if(verbose){message("Starting for loop for downloading new inat data")}
 

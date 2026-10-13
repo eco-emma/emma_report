@@ -32,6 +32,12 @@ options(tidyverse.quiet = TRUE)
 options(clustermq.scheduler = "multicore")
 geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 
+# PR CI sets EMMA_CI_LIGHT=1 to skip website / live GSOD / live iNat (GHA OOM).
+ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
+if (ci_light) {
+  message("EMMA_CI_LIGHT=1: light pipeline mode for pull_request CI")
+}
+
 tar_option_set(packages = c("piggyback","cmdstanr", "posterior", "bayesplot", "tidyverse",
                             "stringr","knitr","sf","stars","units","arrow","lubridate","stantargets",
                             "doParallel","raster","quarto","tarchetypes",
@@ -239,6 +245,20 @@ tar_age(name = inat_data,
    #                               ... = spatial_outputs)),
 
 
-    tar_quarto(website, debug=T, quiet=F)
+    # Full Quarto site (~30m / ~570MB) is for push/schedule; PRs use a stub.
+    if (ci_light) {
+      tar_target(
+        name = website,
+        command = {
+          dir.create("docs", showWarnings = FALSE, recursive = TRUE)
+          marker <- "docs/.emma_ci_light_skip"
+          writeLines("skipped Quarto website (EMMA_CI_LIGHT=1)", marker)
+          marker
+        },
+        format = "file"
+      )
+    } else {
+      tar_quarto(website, debug = TRUE, quiet = FALSE)
+    }
 
 )

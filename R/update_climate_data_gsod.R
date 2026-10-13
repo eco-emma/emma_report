@@ -79,6 +79,12 @@ get_stations_data <- function(temp_directory, protected_areas){
 
 update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
+    # PR light CI: GSOD multi-station downloads (~30m) OOM/starve hosted runners.
+    if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+      message("EMMA_CI_LIGHT=1: skipping GSOD station downloads; empty weather_data")
+      return(tibble::tibble())
+    }
+
     # Reports discard weather before 1970; do not download decades of unused years.
     min_year <- 1970L
     this_year <- year(Sys.Date())

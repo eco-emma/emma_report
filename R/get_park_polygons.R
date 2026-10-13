@@ -111,19 +111,24 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
                quiet = TRUE
                )
 
-    # Optional release upload — must not fail the pipeline on API/asset issues
-      tryCatch(
-        {
-          robust_pb_upload(
-            file = file.path(temp_directory, "protected_areas.gpkg"),
-            repo = REPORT_REPO,
-            tag = park_data_tag
-          )
-        },
-        error = function(e) {
-          message("Skipping protected_areas.gpkg upload: ", conditionMessage(e))
-        }
-      )
+    # Optional release upload — must not fail the pipeline on API/asset issues.
+    # Skip on light CI: robust_pb_upload retries on missing releases for many minutes.
+      if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+        message("EMMA_CI_LIGHT=1: skipping protected_areas.gpkg upload")
+      } else {
+        tryCatch(
+          {
+            robust_pb_upload(
+              file = file.path(temp_directory, "protected_areas.gpkg"),
+              repo = REPORT_REPO,
+              tag = park_data_tag
+            )
+          },
+          error = function(e) {
+            message("Skipping protected_areas.gpkg upload: ", conditionMessage(e))
+          }
+        )
+      }
 
       if (file.exists(file.path(temp_directory, "protected_areas.gpkg"))) {
         file.remove(file.path(temp_directory, "protected_areas.gpkg"))

@@ -30,7 +30,7 @@ library(SPEI)
 tar_load(protected_areas)
 #tar_load(most_recent_fire.tif)
 tar_load(park_fire_history)
-tar_load(temp_directory)
+# temp_directory is a pipeline constant (not a tar_target) — do not tar_load it.
 tar_load(years_since_fire.tif)
 tar_load(fires_wgs)
 tar_load(most_recent_evi.tif)
@@ -300,14 +300,24 @@ n_stations=3 # number of stations to show
     # closest_stations  <- intersect(closest_stations,
     #                                list.files(temp_directory))
 
-    focal_weather=weather_data |> 
-      filter(STNID%in%closest_stations)
+    focal_weather <- if (is.data.frame(weather_data) &&
+                         nrow(weather_data) > 0L &&
+                         "STNID" %in% names(weather_data)) {
+      weather_data |>
+        filter(.data$STNID %in% closest_stations)
+    } else {
+      tibble::tibble()
+    }
 
-  if(nrow(focal_weather) < 1){stop("No weather data loaded")}
+  # Empty on GITHUB_ACTIONS / when NOAA is down — skip climate chunks, keep park report.
+  has_weather <- is.data.frame(focal_weather) && nrow(focal_weather) >= 1L
+  if (!has_weather) {
+    message("No weather data loaded; skipping climate figures for this park")
+  }
   
 ```
 
-```{r reformat_to_match_noaa, echo = FALSE, warning = FALSE, message = FALSE}
+```{r reformat_to_match_noaa, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
 
   #fix station names in focal weather (missing in many case)
   
@@ -350,7 +360,7 @@ n_stations=3 # number of stations to show
 
 ```
 
-```{r filter_old_weather_data, echo = FALSE, warning = FALSE, message = FALSE}
+```{r filter_old_weather_data, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
   
   #Filter out oldest data
   min_date = "1970-01-01"
@@ -360,7 +370,7 @@ n_stations=3 # number of stations to show
 
 ```
 
-```{r generate_precip_dataset, echo = FALSE, warning = FALSE, message = FALSE}
+```{r generate_precip_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
   
   #Generate precip dataset
   
@@ -453,7 +463,7 @@ focal_precip %>%
 
 ```
 
-```{r generate_temp_dataset, echo = FALSE, warning = FALSE, message = FALSE}
+```{r generate_temp_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
 
     #mean daily temp dataset
 
@@ -803,7 +813,11 @@ Figure 3. Histogram of vegetation ages. For the purposes of this plot, any veget
 
 ## Weather Data
 
-```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE}
+```{r weather_unavailable, echo=FALSE, results='asis', eval=!has_weather}
+cat("*Climate figures unavailable: no GSOD weather data for nearby stations.*\n")
+```
+
+```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE, eval=has_weather}
 
   # see: https://rstudio.github.io/dygraphs/
 
@@ -848,7 +862,7 @@ dygraph(focal_precip_trans,
 
 ```
 
-```{r plot_precip, echo=F, eval = TRUE, message = F, fig.width = 10, fig.height = 6}
+```{r plot_precip, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
 #|   - "Figure 4. Climate Data from GSOD.  Mean data is a long-term average for each day of the year across these weather stations."
   #This code chunk plots the targets visualization.
@@ -858,7 +872,7 @@ dygraph(focal_precip_trans,
 
 ```
 
-```{r plot_temp, echo=F, eval = TRUE, message = F, fig.width = 10, fig.height = 6}
+```{r plot_temp, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
 #|   - "Figure 5. Climate Data from GSOD.  Mean data is a long-term average for each day of the year across these weather stations."
 

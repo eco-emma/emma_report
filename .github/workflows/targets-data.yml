@@ -210,9 +210,8 @@ jobs:
 
           # Store _targets as regular git blobs (no Git LFS). Org LFS budget
           # exhaustion blocks LFS uploads; thin tips do not need LFS.
-          cat > .gitattributes <<'EOF'
-# *-runs thin tip: _targets as regular git blobs (no Git LFS).
-EOF
+          # (printf, not a zero-indent heredoc — unindented `#` breaks workflow YAML.)
+          printf '%s\n' '# *-runs thin tip: _targets as regular git blobs (no Git LFS).' > .gitattributes
 
           # Drop any previously tracked bloat from the index (bloated main-runs tip).
           git rm -r --cached -f --ignore-unmatch . >/dev/null 2>&1 || true

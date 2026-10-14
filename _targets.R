@@ -32,10 +32,12 @@ options(tidyverse.quiet = TRUE)
 options(clustermq.scheduler = "multicore")
 geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 
-# PR CI sets EMMA_CI_LIGHT=1 to skip website / live GSOD / live iNat (GHA OOM).
-# Full Quarto (~40 park reports) is also too brittle/slow for hosted runners
-# even when EMMA_CI_LIGHT=0 — stub website whenever GITHUB_ACTIONS=true so
-# push/schedule still validate envdata / EVI / fire / inat / stations.
+# PR CI sets EMMA_CI_LIGHT=1 to stub Quarto website only.
+# Parks / weather / iNat are download-only from emma_envdata releases (fail loud
+# if assets missing). Full Quarto (~40 park reports) is also too brittle/slow for
+# hosted runners even when EMMA_CI_LIGHT=0 — stub website whenever
+# GITHUB_ACTIONS=true so push/schedule still validate envdata / EVI / fire /
+# inat / stations.
 # Phase D splits data vs website jobs (targets-data.yml / targets-website.yml);
 # remove this Actions stub only in Phase E after ≥1 week of green full-site runs.
 ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
@@ -87,11 +89,9 @@ list(
 #    tar_target(temp_directory, # don't make a target because it runs every time.
 #               command = get_temp_directory("data/temp/"),format="file"),
 
+    # Parks SoT: emma_envdata@static_data/protected_areas.gpkg (no local dissolve / park_data upload)
     tar_terra_vect(protected_areas,
-               command = get_park_polygons(temp_directory = temp_directory,
-                                           sacad_filename = "data/manual_downloads/protected_areas/SACAD_OR_2021_Q4.shp",
-                                           sapad_filename = "data/manual_downloads/protected_areas/SAPAD_OR_2021_Q4.shp",
-                                           cape_nature_filename = "data/manual_downloads/protected_areas/Provincial_Nature_Reserves/CapeNature_Reserves_gw.shp")
+               command = get_park_polygons(temp_directory = temp_directory)
                ),
 
    tar_target(remnants,
@@ -129,17 +129,15 @@ list(
   ),
 
 
+   # Weather SoT: emma_envdata@weather_data (download-only; missing asset fails)
    tar_age(name = weather_data,
-           command = update_climate_data_gsod(protected_areas,stations, temp_directory),
-           age = as.difftime(7, units = "days") #weekly updates
-           #age = as.difftime(1, units = "days") #daily updates
-           # age = as.difftime(0, units = "hours") #will update whenever run
+           command = update_climate_data_gsod(temp_directory = temp_directory),
+           age = as.difftime(1, units = "days")
    ),
 
 tar_age(stations,
-        command=get_stations_data(temp_directory, protected_areas),
-        age = as.difftime(7, units = "days") #weekly updates
-        #age = as.difftime(1, units = "days") #daily updates
+        command = get_stations_data(temp_directory),
+        age = as.difftime(1, units = "days")
 ),
 
 
@@ -209,19 +207,10 @@ tar_terra_rast(name = monthly_delta_evi.tif,
                command = get_monthly_delta_evi.tif(most_recent_evi.tif,monthly_mean_evi.tif),
                filetype="COG"),
 
+# iNat SoT: emma_envdata@inat_data/inat_invasives.gpkg (download-only; no live API)
 tar_age(name = inat_data,
-              command = get_inat_data(inat_data_location = "data/manual_downloads/inat_project/observations-405358.csv",
-                                      temp_directory = temp_directory,
-                                      max_attemps = 10,
-                                      sleep_time=10,
-                                      oldest_date = "2020-01-01",
-                                      protected_areas = protected_areas,
-                                      park_buffer = 10000,
-                                      invasive_taxa = c("Acacia", "Pinus", "Hakea", "Eucalyptus", "Leptospermum"), #these are flagged in the table
-                                      verbose=FALSE),
-           # age = as.difftime(7, units = "days") #weekly updates
-           # age = as.difftime(1, units = "days") #daily updates
-            age = as.difftime(28, units = "days") #will update monthly
+              command = get_inat_data(temp_directory = temp_directory, verbose = TRUE),
+            age = as.difftime(1, units = "days")
            ),
 
    tar_age(name = park_fire_history,

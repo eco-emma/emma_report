@@ -41,8 +41,10 @@ get_env_files <- function(repo = ENVDATA_REPO,
   dplyr::bind_rows(rows)
 }
 
-get_report_files <- function(repo = REPORT_REPO, create_park_tag = TRUE) {
-  # List across known report tags; fall back to empty frame
+get_report_files <- function(repo = REPORT_REPO, create_park_tag = FALSE) {
+  # List across known report tags; fall back to empty frame.
+  # park_data is retired as SoT (parks come from emma_envdata@static_data); do not
+  # create/upload that release tag anymore (Phase C / R2).
   tags <- tryCatch({
     # releases listing via API
     token <- Sys.getenv("GITHUB_PAT", unset = Sys.getenv("GITHUB_TOKEN", unset = ""))
@@ -61,15 +63,13 @@ get_report_files <- function(repo = REPORT_REPO, create_park_tag = TRUE) {
   rows <- lapply(tags, function(tag) {
     tryCatch(list_release_assets(repo = repo, tag = tag), error = function(e) NULL)
   })
-  report_files <- dplyr::bind_rows(rows)
-  park_data_tag <- "park_data"
-  if (create_park_tag && (nrow(report_files) == 0L || !park_data_tag %in% report_files$tag)) {
-    tryCatch(
-      piggyback::pb_release_create(repo, tag = park_data_tag),
-      error = function(e) message("Could not create park_data release: ", conditionMessage(e))
+  if (isTRUE(create_park_tag)) {
+    message(
+      "get_report_files(): create_park_tag=TRUE ignored; ",
+      "park_data release creation is retired"
     )
   }
-  report_files
+  dplyr::bind_rows(rows)
 }
 
 #' Years since fire from fireage_current.tif (fireage release)

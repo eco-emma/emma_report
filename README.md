@@ -82,13 +82,20 @@ The EMMA workflow consists of four modules, each with a separate Github repo:
 
 ## Data
 
-Weather data are stored via emma_report releases. Vegetation index, fire age, and static layers are pulled from [emma_envdata](https://github.com/eco-emma/emma_envdata) GitHub Releases using the public contract in `R/envdata_contract.R`.
+Parks, weather, iNaturalist invasives, vegetation index, fire age, and static grid
+layers are pulled from [emma_envdata](https://github.com/eco-emma/emma_envdata)
+GitHub Releases via `R/envdata_contract.R`. Report CI is **download-only** for
+parks / weather / iNat — no live GSOD, rinat, or shapefile dissolve on GHA.
 
 ### emma_envdata contract (current)
 
 | Product | Release tag | Key assets |
 |---|---|---|
 | Static grid / covariates | `static_data` | `domain.tif` (bands: pid, domain, remnants, remnants_distance), `domain.parquet`, `static_covariates.parquet` |
+| **Parks (report SoT)** | `static_data` | `protected_areas.gpkg` (`name`, `type`, `area_ha`; EPSG:9221); also `domain_outline.gpkg`, `parks_buffer_10km.gpkg` |
+| **Weather (report SoT)** | `weather_data` | `weather.parquet` (`STNID`, `YEARMODA`, `TEMP` °C, `PRCP` mm, `NAME`); `stations.gpkg` |
+| **iNat invasives (report SoT)** | `inat_data` | `inat_invasives.gpkg` (WGS84: `scientific_name`, `observed_on`, `longitude`, `latitude`, `invasive`, geometry) |
+| Park shapefile **inputs** (envdata writers only) | `manual-data` | Flat SACAD/SAPAD/CapeNature assets (no nested folders) — not report SoT |
 | MODIS Terra / Aqua VI COGs | `vi_modis_terra_raster`, `vi_modis_aqua_raster` | `vi_modis_{terra\|aqua}_YYYYMMDD.tif` (bands: evi×100, doy) |
 | VIIRS VI COGs | `vi_viirs_raster` | `vi_viirs_{snpp\|noaa20}_YYYYMMDD.tif` |
 | VI parquet | `vi_modis_parquet` | `vi_modis_YYYYMMDD.parquet` (`pid`, `date`, `sensor`, `value`) |
@@ -97,12 +104,23 @@ Weather data are stored via emma_report releases. Vegetation index, fire age, an
 
 STAC root: https://github.com/eco-emma/emma_envdata/releases/download/stac/catalog.json
 
+**Missing vs empty vs stale** (report data job):
+
+| Case | Behaviour |
+|---|---|
+| Tag/asset **missing** (404) | **Fail loud** — broken contract; no live fallback |
+| Asset present, **zero rows** | Succeed; Quarto empty weather / empty iNat guards |
+| Asset present, **stale** | Succeed (freshness = nightly envdata + report cron `0 6 * * *` UTC) |
+
+`emma_report@park_data` is **retired** as parks SoT (no upload / tag create).
+
 Notes for report readers:
 
 - Tabular join key is **`pid`** (legacy `cellID` is aliased where needed).
 - Vegetation product is **EVI** (targets, paths, and report labels use `evi`).
 - EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
 - Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
+- Climate figures cite GSOD via emma_envdata `weather_data`.
 
 ## CI `*-runs` cache (Phase D0 / R4b)
 
@@ -143,13 +161,14 @@ Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
 
 ## Releases
 
-* GSOD contains weather data from the [Global Surface Summary of the Day](https://www.ncei.noaa.gov/metadata/geoportal/rest/metadata/item/gov.noaa.ncdc:C00516/html), which are extracted using [GSODR](https://cran.r-project.org/package=GSODR). The file "gsod_stations" contains metadata on the stations within the focal domain, and the other files contain data for each weather station in the area. Files are in Apache Arrow format.
-
-* NOAA contains weather data from [Integrated Surface Database](https://www.ncei.noaa.gov/pub/data/noaa/isd-format-document.pdf), which are extracted using [rnoaa](https://cran.r-project.org/package=rnoaa). The file "noaa_stations" contains metadata on the stations within the focal domain, and the other files contain data for each weather station in the area.  Files are in Apache Arrow format.
+* Weather / stations: published by emma_envdata on tag `weather_data` (GSOD via [GSODR](https://cran.r-project.org/package=GSODR)).
+* Parks: published by emma_envdata on tag `static_data` (`protected_areas.gpkg`).
+* iNat invasives: published by emma_envdata on tag `inat_data`.
 
 ## Changelog
 
 * Oct 2026
+  - Phase C / R1–R3: parks / weather / iNat download-only from `static_data` / `weather_data` / `inat_data`; fail loud if missing; retire `park_data` upload; schedule `0 6 * * *` UTC.
   - Migrated envdata consumption to the eco-emma public release/STAC contract (`static_data`, `vi_*`, `fireage`, `stac*`).
   - Replaced legacy AdamWilsonLab tags (`current`, `processed_static`, old MODIS VI tags, `processed_most_recent_burn_dates`, `raw_static`) and `cellID` / `stable_data.gz.parquet` assumptions.
   - Renamed all report product identifiers from the old vegetation-index naming to `evi` (targets, Quarto, paths, docs).

@@ -13,6 +13,12 @@ MODEL_REPO <- "eco-emma/emma_model"
 
 ENVDATA_RELEASE_TAGS <- list(
   static              = "static_data",
+  # Report SoT downloads (Phase C / R1–R3). Envdata writers publish these;
+  # report never live-harvests parks / GSOD / iNat on GHA.
+  weather             = "weather_data",
+  inat                = "inat_data",
+  # Envdata-only input tag (flat shapefile assets). Not consumed by report.
+  manual_data         = "manual-data",
   vi_modis_terra      = "vi_modis_terra_raster",
   vi_modis_aqua       = "vi_modis_aqua_raster",
   vi_viirs            = "vi_viirs_raster",
@@ -27,6 +33,35 @@ ENVDATA_RELEASE_TAGS <- list(
   stac_vi             = "stac-vi",
   stac_burn           = "stac-burn",
   stac_static         = "stac-static"
+)
+
+#' Pinned consumer assets (§0.2 of the CI full plan)
+#'
+#' Missing tag/asset → fail loud (download_envdata_asset stops).
+#' Present + zero rows → succeed; Quarto empty guards handle display.
+ENVDATA_REPORT_ASSETS <- list(
+  parks = list(
+    tag = "static_data",
+    files = c(
+      "protected_areas.gpkg",
+      "domain_outline.gpkg",
+      "parks_buffer_10km.gpkg"
+    ),
+    required_cols = c("name", "type", "area_ha")
+  ),
+  weather = list(
+    tag = "weather_data",
+    files = c("weather.parquet", "stations.gpkg"),
+    weather_cols = c("STNID", "YEARMODA", "TEMP", "PRCP", "NAME"),
+    station_cols = c("STNID", "NAME")
+  ),
+  inat = list(
+    tag = "inat_data",
+    files = c("inat_invasives.gpkg"),
+    required_cols = c(
+      "scientific_name", "observed_on", "longitude", "latitude", "invasive"
+    )
+  )
 )
 
 ENVDATA_STAC_CATALOG_URL <-

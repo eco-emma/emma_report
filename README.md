@@ -55,6 +55,38 @@ Notes for report readers:
 - EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
 - Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
 
+## CI `*-runs` cache (Phase D0 / R4b)
+
+GitHub Actions pushes a **`<branch>-runs`** branch after each successful pipeline.
+That ref is a **targets store cache only**:
+
+| Allowed on `*-runs` tip | Forbidden (never force-add) |
+|---|---|
+| `_targets/` (Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
+| `.gitattributes` | `*.html.md`, ephemeral `data/temp/` |
+
+Source checkout uses `fetch-depth: 1`; restore copies `_targets/` only.
+Website / Pages deploy is **not** via `main-runs` (see CI full plan Phase D).
+
+**Ops follow-up (reclaim ~5 GB history):** after this thin-upload lands on
+`main`, orphan-reset bloated runs refs (force-push of the runs branch only —
+does not rewrite `main`):
+
+```bash
+# Dry-run first
+DRY_RUN=1 ./scripts/orphan-reset-runs-branch.sh main-runs
+
+# Then, with write access:
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh main-runs
+
+# Optional: drop unused legacy runs branches
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale targets-runs
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-runs
+```
+
+Do **not** run the force-push from unattended CI; Adam (or a maintainer) runs
+it once manually after confirming a recent thin tip has `_targets/`.
+
 ## Releases
 
 * GSOD contains weather data from the [Global Surface Summary of the Day](https://www.ncei.noaa.gov/metadata/geoportal/rest/metadata/item/gov.noaa.ncdc:C00516/html), which are extracted using [GSODR](https://cran.r-project.org/package=GSODR). The file "gsod_stations" contains metadata on the stations within the focal domain, and the other files contain data for each weather station in the area. Files are in Apache Arrow format.

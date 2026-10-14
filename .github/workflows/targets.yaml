@@ -49,6 +49,9 @@ name: targets
 jobs:
   targets:
     runs-on: ubuntu-latest
+    # Combined data+website job until Phase D split; cold weather+website can
+    # approach ~90m wall-clock. Fail loud instead of hanging until runner kill.
+    timeout-minutes: 120
     # Push <branch>-runs after tar_make; default GITHUB_TOKEN is read-only on PRs.
     permissions:
       contents: write
@@ -81,7 +84,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs:  'true'
-          fetch-depth: 0 # added
+          # Source tip only; full history is not needed for tar_make / runs upload.
+          fetch-depth: 1
           # Configure git remote with PAT so push of <branch>-runs is allowed.
           # Without this, PR jobs push as github-actions[bot] and get 403.
           token: ${{ secrets.GH_PAT_BSM }}
@@ -234,22 +238,48 @@ jobs:
         # Pipeline success is the PR gate; push can still fail if PAT lacks write.
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: |
+          set -euo pipefail
           git config --local user.name "GitHub Actions"
           git config --local user.email "actions@github.com"
           # Force PAT credentials (checkout/.git may still be github-actions[bot]).
           git remote set-url origin "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPOSITORY}.git"
-          rm -rf .github/workflows # .gitignore
-          # Ephemeral downloads — keep _targets store only for cache reuse.
-          rm -rf data/temp
-          git lfs track _targets/objects/* #use git LFS to track the targets output (larger files)
-          # git lfs track "data/**"
-          git add --all
-          for file in $(git ls-files -mo)
-          do
-            git add -f $file
-          done
-          git commit -am "Run pipeline"
-          git push origin ${{ steps.extract_branch.outputs.branch }}-runs
+
+          # Phase D0 / R4b hard gate: *-runs tip is _targets cache only.
+          # Never force-add Quarto / website outputs (docs, reports, .quarto, …).
+          rm -rf .github/workflows
+          rm -rf data/temp docs reports .quarto site_libs
+          find . -name '*.html.md' -type f -delete 2>/dev/null || true
+
+          # LFS for large target objects; rewrite .gitattributes to targets-only.
+          git lfs install --local
+          git lfs track "_targets/objects/**"
+          test -f .gitattributes
+
+          # Drop any previously tracked bloat from the index (bloated main-runs tip).
+          # Keep the worktree otherwise; we only stage the thin cache paths below.
+          git rm -r --cached -f --ignore-unmatch . >/dev/null 2>&1 || true
+
+          # _targets is gitignored on main — force-add ONLY these paths.
+          git add -f .gitattributes
+          if [ -d _targets ]; then
+            git add -f _targets
+          else
+            echo "WARNING: no _targets/ directory to upload" >&2
+          fi
+
+          # Refuse to stage forbidden paths even if something recreated them.
+          forbidden='^(docs/|reports/|\.quarto/|site_libs/|.*\.html\.md$)'
+          if git diff --cached --name-only | grep -E "$forbidden"; then
+            echo "ERROR: refused to commit Quarto/website paths to *-runs" >&2
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "Nothing new in thin runs cache; skipping commit"
+          else
+            git commit -m "Run pipeline (targets cache only)"
+          fi
+          git push origin "${{ steps.extract_branch.outputs.branch }}-runs"
 
       - name: Prepare failure artifact
         if: failure()

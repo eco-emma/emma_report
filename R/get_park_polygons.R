@@ -112,16 +112,19 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
                )
 
     # Optional release upload — must not fail the pipeline on API/asset issues.
-    # Skip on light CI: robust_pb_upload retries on missing releases for many minutes.
-      if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
-        message("EMMA_CI_LIGHT=1: skipping protected_areas.gpkg upload")
+    # Skip on GitHub Actions: piggyback retries burn ~15m even when soft-failing.
+      if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1") ||
+          identical(Sys.getenv("GITHUB_ACTIONS"), "true")) {
+        message("CI: skipping protected_areas.gpkg upload")
       } else {
         tryCatch(
           {
             robust_pb_upload(
               file = file.path(temp_directory, "protected_areas.gpkg"),
               repo = REPORT_REPO,
-              tag = park_data_tag
+              tag = park_data_tag,
+              max_attempts = 2,
+              sleep_time = 1
             )
           },
           error = function(e) {

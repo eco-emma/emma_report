@@ -511,31 +511,30 @@ mutate(date_time = paste(year,month,day,sep = "-"))%>%
 
 ```{r crop invasives, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
-inat_data %>%
-  filter(invasive==T & 
-           as_date(observed_on)>(today()-as.difftime(900, units = "days"))) |> 
-      st_crop(y = focal_wgs %>%
-                st_buffer(dist = 1000)) -> focal_invasives
+# Empty iNat (CSV seed / Actions / API downtime): never call addCircleMarkers on zero rows.
+has_inat <- inherits(inat_data, "sf") && nrow(inat_data) >= 1L
 
+if (has_inat) {
+  inat_data %>%
+    filter(invasive == TRUE &
+             as_date(observed_on) > (today() - as.difftime(900, units = "days"))) |>
+    st_crop(y = focal_wgs %>% st_buffer(dist = 1000)) -> focal_invasives
 
-inat_data %>%
-  filter(invasive==T & 
-           as_date(observed_on)<=(today()-as.difftime(900, units = "days"))) |> 
-      st_crop(y = focal_wgs %>%
-                st_buffer(dist = 1000)) -> focal_old_invasives
+  inat_data %>%
+    filter(invasive == TRUE &
+             as_date(observed_on) <= (today() - as.difftime(900, units = "days"))) |>
+    st_crop(y = focal_wgs %>% st_buffer(dist = 1000)) -> focal_old_invasives
+} else {
+  message("No iNaturalist invasives loaded; skipping invasive markers for this park")
+  focal_invasives <- inat_data
+  focal_old_invasives <- inat_data
+}
 
-
-# if there are no data, make a dataframe with NAs so that leaflet doesn't fail (will still throw error)
-
-if(nrow(focal_invasives) == 0){
-  
-
-  invasive_labels <- NULL
-  
-}else{
-  
-  invasive_labels <- focal_invasives$scientific_name
-  
+has_focal_invasives <- inherits(focal_invasives, "sf") && nrow(focal_invasives) >= 1L
+invasive_labels <- if (has_focal_invasives) {
+  focal_invasives$scientific_name
+} else {
+  NULL
 }
 
 ```
@@ -549,98 +548,114 @@ if(nrow(focal_invasives) == 0){
 
 ```{r evi_and_burns, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
-  leaflet(data = focal_wgs) %>%
+park_map <- leaflet(data = focal_wgs) %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
-    #addProviderTiles("NASAGIBS.ModisTerraTrueColorCR", group = "True Colors") %>%
-    addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
-  addPolygons(color = "black",
-              stroke = TRUE,
-              fill = FALSE,
-              group = "Park") %>%
-  addRasterImage(x = raster::raster(most_recent_evi.tif),
-                 group = "EVI",
-                 colors = evi_pal) %>%
-    # addRasterImage(x = raster::raster(delta_evi.tif),
-    #              group = "delta EVI<br/>(long-term)",
-    #              colors = delta_evi_pal) %>%
-  # addRasterImage(x = raster::raster(quarterly_delta_evi.tif),
-  #              group = "delta EVI<br/>(quarterly)",
-  #              colors = delta_evi_pal) %>%
-  addRasterImage(x = raster::raster(monthly_delta_evi.tif),
-                 group = "delta EVI<br/>(monthly)",
-                 colors = delta_evi_pal) %>%
-  hideGroup("delta EVI<br/>(quarterly)") %>%
-  
-  # Add recent invasive species
-   
-  addCircleMarkers(data = focal_invasives,
-             label = invasive_labels,
-             group = "Invasives (new)",
-             stroke = FALSE,
-             fillOpacity = 1,
-             fillColor = "darkgrey",
-             radius = 5) %>%
-  
-  addPolygons(data = fires_wgs_truncated,
-              color = "red",
-              fill = TRUE,
-              fillOpacity = 0,
-              stroke = TRUE,
-              label = paste(fires_wgs$Years, "years since burn"),
-              weight = 1,
-              group = "Fire Outlines") %>%
-    addPolygons(data = fires_wgs_truncated,
-              color = ~antipal(Years),
-              fillOpacity = .75,
-              stroke = FALSE,
-              label = fires_wgs$Years,
-              group = "Fires") %>%
-    addMarkers(data = focal_stations_sf,
-               label = focal_stations_sf$station_name,
-               group = "Stations") %>%
-    
-    # turn off some layers by default
-  
-    hideGroup("Stations") %>%
-    hideGroup("Invasives (new)") %>%
-    hideGroup("EVI") %>%
-    hideGroup("delta EVI<br/>(long-term)") %>%
-  
-    # add legends
-  
-    leaflet::addLegend(position = "topright",
-                     pal = delta_evi_pal,          
-                     values = ~values(monthly_delta_evi.tif),
-                     #values = ~c(-1,1),
-                     opacity = 1,
-                     title = "delta<br/>EVI") %>%
-  
-    leaflet::addLegend(position = "topright",
-            pal = evi_pal,          
-            values = ~values(raster::raster(most_recent_evi.tif)),
-            #values = ~c(-1,1),
-            opacity = 1,
-            title = "EVI") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
+  addPolygons(
+    color = "black",
+    stroke = TRUE,
+    fill = FALSE,
+    group = "Park"
+  ) %>%
+  addRasterImage(
+    x = raster::raster(most_recent_evi.tif),
+    group = "EVI",
+    colors = evi_pal
+  ) %>%
+  addRasterImage(
+    x = raster::raster(monthly_delta_evi.tif),
+    group = "delta EVI<br/>(monthly)",
+    colors = delta_evi_pal
+  ) %>%
+  hideGroup("delta EVI<br/>(quarterly)")
 
-    addLegend_decreasing(position = "bottomright",
-            pal = pal,
-            values = ~fires_wgs_truncated$Years,
+# Permanent empty-iNat guard: leaflet crashes on addCircleMarkers with zero rows.
+if (isTRUE(has_focal_invasives)) {
+  park_map <- park_map %>%
+    addCircleMarkers(
+      data = focal_invasives,
+      label = invasive_labels,
+      group = "Invasives (new)",
+      stroke = FALSE,
+      fillOpacity = 1,
+      fillColor = "darkgrey",
+      radius = 5
+    )
+}
+
+park_map <- park_map %>%
+  addPolygons(
+    data = fires_wgs_truncated,
+    color = "red",
+    fill = TRUE,
+    fillOpacity = 0,
+    stroke = TRUE,
+    label = paste(fires_wgs$Years, "years since burn"),
+    weight = 1,
+    group = "Fire Outlines"
+  ) %>%
+  addPolygons(
+    data = fires_wgs_truncated,
+    color = ~antipal(Years),
+    fillOpacity = .75,
+    stroke = FALSE,
+    label = fires_wgs$Years,
+    group = "Fires"
+  ) %>%
+  addMarkers(
+    data = focal_stations_sf,
+    label = focal_stations_sf$station_name,
+    group = "Stations"
+  ) %>%
+  hideGroup("Stations") %>%
+  hideGroup("EVI") %>%
+  hideGroup("delta EVI<br/>(long-term)")
+
+if (isTRUE(has_focal_invasives)) {
+  park_map <- park_map %>% hideGroup("Invasives (new)")
+}
+
+overlay_groups <- c(
+  "Park",
+  "Stations",
+  "delta EVI<br/>(monthly)",
+  "delta EVI<br/>(long-term)",
+  "EVI",
+  "Fire Outlines",
+  "Fires"
+)
+if (isTRUE(has_focal_invasives)) {
+  overlay_groups <- c(overlay_groups, "Invasives (new)")
+}
+
+park_map %>%
+  leaflet::addLegend(
+    position = "topright",
+    pal = delta_evi_pal,
+    values = ~values(monthly_delta_evi.tif),
+    opacity = 1,
+    title = "delta<br/>EVI"
+  ) %>%
+  leaflet::addLegend(
+    position = "topright",
+    pal = evi_pal,
+    values = ~values(raster::raster(most_recent_evi.tif)),
+    opacity = 1,
+    title = "EVI"
+  ) %>%
+  addLegend_decreasing(
+    position = "bottomright",
+    pal = pal,
+    values = ~fires_wgs_truncated$Years,
     title = "Years<br/>Since<br/>Fire",
-    opacity = 1) %>%
-  
-    addLayersControl(
-    baseGroups = c("NatGeo","World Imagery"),
-    overlayGroups = c("Park",
-                      "Stations",
-                      "delta EVI<br/>(monthly)",
-                      "delta EVI<br/>(long-term)",
-                      #"delta EVI<br/>(quarterly)",
-                      "EVI",
-                      "Fire Outlines",
-                      "Fires",
-                      "Invasives (new)"
-                      ),
-    options = layersControlOptions(collapsed = FALSE),position = "topleft") %>%
+    opacity = 1
+  ) %>%
+  addLayersControl(
+    baseGroups = c("NatGeo", "World Imagery"),
+    overlayGroups = overlay_groups,
+    options = layersControlOptions(collapsed = FALSE),
+    position = "topleft"
+  ) %>%
   fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
 
 ```
@@ -1079,4 +1094,11 @@ dates <- bind_rows(
 
 knitr::kable(dates)
  
+```
+
+```{r page-built-footer, echo=FALSE, results='asis'}
+cat(sprintf(
+  "\n\n---\n\n*Page last built: %s UTC*\n",
+  format(as.POSIXlt(Sys.time(), tz = "UTC"), "%Y-%m-%d %H:%M:%S")
+))
 ```

@@ -190,3 +190,10 @@ dates <- bind_rows(
 knitr::kable(dates)
  
 ```
+
+```{r page-built-footer, echo=FALSE, results='asis'}
+cat(sprintf(
+  "\n\n---\n\n*Page last built: %s UTC*\n",
+  format(as.POSIXlt(Sys.time(), tz = "UTC"), "%Y-%m-%d %H:%M:%S")
+))
+```

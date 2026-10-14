@@ -61,9 +61,9 @@ jobs:
       # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
       GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
       # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
-      # Push/schedule keep the full pipeline.
-      # This branch forces full mode so we can validate main/schedule before merge.
-      EMMA_CI_LIGHT: ${{ (github.event_name == 'pull_request' && github.head_ref != 'cursor/main-ci-full-pipeline-e284') && '1' || '0' }}
+      # Push/schedule: EMMA_CI_LIGHT=0 but website is still stubbed under GITHUB_ACTIONS
+      # (see _targets.R); summary step labels website: stubbed so ✅ ≠ full HTML.
+      EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
       # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
       # the path and exports it via GITHUB_ENV for later steps.
     steps:
@@ -182,6 +182,38 @@ jobs:
           # website ~32m / ~570MB) starve the hosted runner ("lost communication").
           targets::tar_make()
         shell: Rscript {0}
+
+      - name: Summarize website status
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## emma_report CI summary"
+            echo ""
+            if [ -f docs/.emma_ci_actions_skip ] || [ -f docs/.emma_ci_light_skip ]; then
+              echo "website: stubbed"
+              echo ""
+              echo "Quarto park site was **not** rendered. Schedule/push ✅ means data targets only."
+              if [ -f docs/.emma_ci_actions_skip ]; then
+                echo ""
+                echo '```'
+                cat docs/.emma_ci_actions_skip
+                echo '```'
+              fi
+              if [ -f docs/.emma_ci_light_skip ]; then
+                echo ""
+                echo '```'
+                cat docs/.emma_ci_light_skip
+                echo '```'
+              fi
+            elif [ -f docs/index.html ]; then
+              echo "website: full"
+            else
+              echo "website: missing"
+            fi
+            echo ""
+            echo "EMMA_CI_LIGHT=${EMMA_CI_LIGHT}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Create the runs branch if it does not already exist
         if: steps.runs-cache.outputs.is_branch_runs != 'true'

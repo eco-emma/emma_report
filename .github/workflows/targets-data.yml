@@ -97,13 +97,15 @@ jobs:
           ref: ${{ steps.runs-cache.outputs.ref }}
           fetch-depth: 1
           path: .runs-cache
-          lfs: true
+          # Thin *-runs tips store _targets as normal git blobs (no LFS).
+          lfs: false
           token: ${{ secrets.GH_PAT_BSM }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
         run: |
-          git -C .runs-cache lfs checkout || true
+          # Best-effort only for pre-orphan tips that still had LFS pointers.
+          git -C .runs-cache lfs checkout 2>/dev/null || true
           if [ -d .runs-cache/_targets ]; then
             rm -rf _targets
             cp -a .runs-cache/_targets .
@@ -209,10 +211,11 @@ jobs:
           rm -rf data/temp docs reports .quarto site_libs
           find . -name '*.html.md' -type f -delete 2>/dev/null || true
 
-          # LFS for large target objects; rewrite .gitattributes to targets-only.
-          git lfs install --local
-          git lfs track "_targets/objects/**"
-          test -f .gitattributes
+          # Store _targets as regular git blobs (no Git LFS). Org LFS budget
+          # exhaustion blocks LFS uploads; thin tips do not need LFS.
+          cat > .gitattributes <<'EOF'
+# *-runs thin tip: _targets as regular git blobs (no Git LFS).
+EOF
 
           # Drop any previously tracked bloat from the index (bloated main-runs tip).
           git rm -r --cached -f --ignore-unmatch . >/dev/null 2>&1 || true

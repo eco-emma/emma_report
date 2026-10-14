@@ -90,13 +90,15 @@ jobs:
           ref: ${{ steps.runs-cache.outputs.ref }}
           fetch-depth: 1
           path: .runs-cache
-          lfs: true
+          # Thin *-runs tips store _targets as normal git blobs (no LFS).
+          lfs: false
           token: ${{ secrets.GH_PAT_BSM }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
         run: |
-          git -C .runs-cache lfs checkout || true
+          # Best-effort only for pre-orphan tips that still had LFS pointers.
+          git -C .runs-cache lfs checkout 2>/dev/null || true
           if [ -d .runs-cache/_targets ]; then
             rm -rf _targets
             cp -a .runs-cache/_targets .

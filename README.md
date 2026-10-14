@@ -50,11 +50,13 @@ That ref is a **targets store cache only**:
 
 | Allowed on `*-runs` tip | Forbidden (never force-add) |
 |---|---|
-| `_targets/` (Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
-| `.gitattributes` | `*.html.md`, ephemeral `data/temp/` |
+| `_targets/` (regular git blobs, **not** Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
+| `.gitattributes` (no LFS filters) | `*.html.md`, ephemeral `data/temp/` |
 
 Source checkout uses `fetch-depth: 1`; restore copies `_targets/` only.
 Website / Pages deploy is **not** via `main-runs`.
+
+**Why not Git LFS:** org LFS budget exhaustion blocks uploads of `_targets/objects/**`. Thin tips store objects as normal git blobs so orphan-reset and CI upload can push without an LFS transfer. Raising/clearing the eco-emma LFS budget is still needed if you want GitHub to drop *old* unreferenced LFS blobs from billing — that is separate from a successful thin force-push.
 
 **Ops follow-up (reclaim ~5 GB history):** after thin-upload lands on `main`, orphan-reset bloated runs refs (force-push of the runs branch only — does not rewrite `main`):
 
@@ -64,6 +66,8 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh main-runs
 CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale targets-runs
 CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-runs
 ```
+
+`GIT_LFS_SKIP_SMUDGE=1` is set by the script; `git-lfs` is optional. If tip objects are still LFS pointers (smudge failed), the force-push still succeeds and the next data job cold-starts then uploads real objects as git blobs.
 
 Runs upload is **soft-fail** (`continue-on-error: true`): data-job ✅ tracks `tar_make`, not runs-branch auth. If the summary shows `runs-upload: failed (soft)`, rotate `GH_PAT_BSM`.
 
@@ -129,11 +133,15 @@ That ref is a **targets store cache only**:
 
 | Allowed on `*-runs` tip | Forbidden (never force-add) |
 |---|---|
-| `_targets/` (Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
-| `.gitattributes` | `*.html.md`, ephemeral `data/temp/` |
+| `_targets/` (regular git blobs, **not** Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
+| `.gitattributes` (no LFS filters) | `*.html.md`, ephemeral `data/temp/` |
 
 Source checkout uses `fetch-depth: 1`; restore copies `_targets/` only.
 Website / Pages deploy is **not** via `main-runs` (see CI full plan Phase D).
+
+**Why not Git LFS:** org LFS budget exhaustion blocks LFS uploads. Thin tips and
+orphan-reset push `_targets` as normal git blobs. Raise/clear the eco-emma LFS
+budget only if you need GitHub to GC *old* unreferenced LFS objects from billing.
 
 **Ops follow-up (reclaim ~5 GB history):** after this thin-upload lands on
 `main`, orphan-reset bloated runs refs (force-push of the runs branch only —
@@ -152,7 +160,8 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-ru
 ```
 
 Do **not** run the force-push from unattended CI; Adam (or a maintainer) runs
-it once manually after confirming a recent thin tip has `_targets/`.
+it once manually after confirming a recent tip has `_targets/`. Pull the fixed
+script from `main` first (no LFS track on the orphan tip).
 
 Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
 ✅ tracks `tar_make`, not runs-branch auth. If the summary shows

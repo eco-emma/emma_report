@@ -37,6 +37,115 @@ envdata_release_url <- function(tag, file, repo = ENVDATA_REPO) {
   sprintf("https://github.com/%s/releases/download/%s/%s", repo, tag, URLencode(file, reserved = TRUE))
 }
 
+#' List GitHub release assets via the REST API (paginated)
+#'
+#' Replaces piggyback::pb_list for large releases (e.g. fireage has 900+ assets)
+#' where piggyback fails with "values must be length 1".
+#'
+#' @return data.frame with columns file_name, tag, size, timestamp (ISO), repo
+list_release_assets <- function(repo = ENVDATA_REPO,
+                                tag,
+                                max_pages = 50L,
+                                verbose = FALSE) {
+  token <- Sys.getenv("GITHUB_PAT", unset = Sys.getenv("GITHUB_TOKEN", unset = ""))
+  # GitHub API requires a User-Agent; anonymous requests without one often 403.
+  headers <- c(
+    Accept = "application/vnd.github+json",
+    `User-Agent` = "eco-emma/emma_report"
+  )
+  if (nzchar(token)) {
+    headers <- c(headers, Authorization = paste("Bearer", token))
+  }
+
+  empty <- data.frame(
+    file_name = character(),
+    tag = character(),
+    size = integer(),
+    timestamp = character(),
+    repo = character(),
+    stringsAsFactors = FALSE
+  )
+
+  # Fast path: gh CLI with server-side pagination + jq (avoids piggyback limits)
+  if (nzchar(Sys.which("gh"))) {
+    # Quote carefully — some R/system2 paths invoke sh and break on `|` / `?`.
+    gh_sh <- function(args) {
+      cmd <- paste(c("gh", vapply(args, shQuote, character(1))), collapse = " ")
+      tryCatch(system(cmd, intern = TRUE), error = function(e) character())
+    }
+    rel_id <- suppressWarnings(as.integer(
+      gh_sh(c("api", sprintf("repos/%s/releases/tags/%s", repo, tag), "--jq", ".id"))[1]
+    ))
+    if (!is.na(rel_id) && rel_id > 0L) {
+      jq_filter <- ".[] | [.name, (.size|tostring), (.updated_at // .created_at)] | @tsv"
+      lines <- gh_sh(c(
+        "api", "--paginate",
+        sprintf("repos/%s/releases/%d/assets?per_page=100", repo, rel_id),
+        "--jq", jq_filter
+      ))
+      lines <- lines[nzchar(lines)]
+      if (length(lines) > 0L) {
+        parts <- strsplit(lines, "\t", fixed = TRUE)
+        ok <- lengths(parts) >= 3L
+        parts <- parts[ok]
+        return(data.frame(
+          file_name = vapply(parts, `[[`, character(1), 1L),
+          tag = tag,
+          size = as.integer(vapply(parts, function(x) x[2], character(1))),
+          timestamp = vapply(parts, function(x) x[3], character(1)),
+          repo = repo,
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+  }
+
+  # Fallback: download.file pagination (needs User-Agent / token headers)
+  release_tf <- tempfile(fileext = ".json")
+  on.exit(unlink(release_tf), add = TRUE)
+  release_url <- sprintf("https://api.github.com/repos/%s/releases/tags/%s", repo, tag)
+  tryCatch(
+    utils::download.file(release_url, release_tf, quiet = !verbose, headers = headers),
+    error = function(e) stop("Failed to fetch release ", repo, "@", tag, ": ", conditionMessage(e))
+  )
+  release <- jsonlite::fromJSON(release_tf, simplifyVector = TRUE)
+  release_id <- release$id
+  if (is.null(release_id)) stop("Release ", repo, "@", tag, " has no id")
+
+  file_name <- character()
+  size <- integer()
+  timestamp <- character()
+  page <- 1L
+  repeat {
+    page_tf <- tempfile(fileext = ".json")
+    page_url <- sprintf(
+      "https://api.github.com/repos/%s/releases/%s/assets?per_page=100&page=%d",
+      repo, release_id, page
+    )
+    utils::download.file(page_url, page_tf, quiet = !verbose, headers = headers)
+    page_assets <- jsonlite::fromJSON(page_tf, simplifyVector = TRUE)
+    unlink(page_tf)
+    if (is.null(page_assets) || NROW(page_assets) == 0L) break
+    nms <- as.character(page_assets$name)
+    file_name <- c(file_name, nms)
+    size <- c(size, as.integer(page_assets$size))
+    timestamp <- c(timestamp, as.character(page_assets$updated_at))
+    if (length(nms) < 100L || page >= max_pages) break
+    page <- page + 1L
+  }
+  if (length(file_name) == 0L) return(empty)
+  data.frame(
+    file_name = file_name,
+    tag = tag,
+    size = size,
+    timestamp = timestamp,
+    repo = repo,
+    stringsAsFactors = FALSE
+  )
+}
+
+`%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
+
 #' Download one release asset with retries (replaces legacy robust_pb_download for envdata)
 download_envdata_asset <- function(tag,
                                    file,
@@ -191,13 +300,25 @@ get_latest_vi_stac_item <- function(collection_url = NULL) {
   read_json_url(latest_href)
 }
 
-#' Parse YYYYMMDD from a VI / fireage filename
+#' Parse YYYYMMDD from a VI / fireage filename (vectorized for dplyr::mutate)
 parse_envdata_yyyymmdd <- function(file_name) {
-  m <- regmatches(file_name, regexpr("20[0-9]{6}", file_name))
-  if (length(m) == 0L || !nzchar(m[[1]])) {
-    return(as.Date(NA))
+  file_name <- as.character(file_name)
+  n <- length(file_name)
+  out <- rep(as.Date(NA), n)
+  if (!n) {
+    return(out)
   }
-  as.Date(m[[1]], format = "%Y%m%d")
+  # Do not use regmatches(): it drops non-matches and shortens the vector.
+  # The old m[[1]] path returned a length-1 Date, so mutate() recycled the
+  # first filename's date onto every row and month filters found nothing.
+  m <- regexpr("20[0-9]{6}", file_name)
+  ok <- !is.na(m) & m > 0L
+  if (any(ok)) {
+    ml <- attr(m, "match.length")[ok]
+    extracted <- substring(file_name[ok], m[ok], m[ok] + ml - 1L)
+    out[ok] <- as.Date(extracted, format = "%Y%m%d")
+  }
+  out
 }
 
 #' Download domain.tif and return a SpatRaster

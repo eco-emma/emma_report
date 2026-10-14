@@ -33,6 +33,10 @@ on:
       - master
       - dev-adam
       - 2025_website
+  pull_request:
+    branches:
+      - main
+      - master
 
 # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -45,168 +49,178 @@ name: targets
 jobs:
   targets:
     runs-on: ubuntu-latest
+    # Push <branch>-runs after tar_make; default GITHUB_TOKEN is read-only on PRs.
+    permissions:
+      contents: write
+      actions: read
+    # Always run inside the published emma image (laptop / GHA / Singularity share this tag).
+    # Packages come from the image site-library — do not renv::restore() or update.packages().
     container: adamwilsonlab/emma:latest
     env:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
-#      RENV_PATHS_ROOT: ~/.local/share/renv
+      # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
+      GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
+      # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
+      # Push/schedule keep the full pipeline.
+      EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+      # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
+      # the path and exports it via GITHUB_ENV for later steps.
     steps:
       - name: Extract branch name
-        shell: bash
-        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
         id: extract_branch
-#       - name: Maximize build space
-#         uses: easimon/maximize-build-space@master # https://github.com/easimon/maximize-build-space
-#         with:
-# #          root-reserve-mb: 512
-# #          swap-size-mb: 1024
-#           remove-dotnet: 'true'
-#           remove-android: 'true'
-#           remove-haskell: 'true'
+        shell: bash
+        run: |
+          # PRs use refs/pull/<n>/merge — head_ref is the real feature branch.
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            branch="${GITHUB_HEAD_REF}"
+          else
+            branch="${GITHUB_REF_NAME}"
+          fi
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           lfs:  'true'
           fetch-depth: 0 # added
+          # Configure git remote with PAT so push of <branch>-runs is allowed.
+          # Without this, PR jobs push as github-actions[bot] and get 403.
+          token: ${{ secrets.GH_PAT_BSM }}
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
       - name: Checkout LFS objects
         run: git lfs checkout
         continue-on-error: true
-      - name: Install R Package Dependencies
-        run: |-
-          Rscript -e "update.packages(ask = FALSE)"
-          Rscript -e "install.packages('geotargets', repos = c('https://ropensci.r-universe.dev', 'https://cran.r-project.org'))"
-          Rscript -e "questionr::qscan(list.files(pattern='*.R',recursive=T), load = TRUE, detail = TRUE)" # this scans all scripts and installs any needed packages
-      #- name: Authorize Github for R
-      #   run: |-
-      # - name: Cache packages
-      #   uses: actions/cache@v1
-      #   with:
-      #     path: ${{ env.RENV_PATHS_ROOT }}
-      #     key: ${{ runner.os }}-renv-${{ hashFiles('**/renv.lock') }}
-      #     restore-keys: ${{ runner.os }}-renv-
 
-      # - name: Restore packages
-      #   shell: Rscript {0}
-      #   run: |
-      #     if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv")
-      #     renv::restore()
+      # Prefer <branch>-runs; fall back to main-runs so PR cold starts are not
+      # forced through a full weather+website rebuild (OOM / lost communication).
+      - name: Resolve runs cache ref
+        id: runs-cache
+        shell: bash
+        run: |
+          branch="${{ steps.extract_branch.outputs.branch }}"
+          if git ls-remote --exit-code --heads origin "${branch}-runs"; then
+            echo "ref=${branch}-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=true" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin main-runs; then
+            echo "ref=main-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "is_branch_runs=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Check if previous runs exists
-        id: runs-exist
-        run: git ls-remote --exit-code --heads origin ${{ steps.extract_branch.outputs.branch }}-runs
-        continue-on-error: true
-
-      - name: Checkout previous run
-        if: steps.runs-exist.outcome == 'success'
-        uses: actions/checkout@v2
+      - name: Checkout runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        uses: actions/checkout@v4
         with:
-          ref: ${{ steps.extract_branch.outputs.branch }}-runs
+          ref: ${{ steps.runs-cache.outputs.ref }}
           fetch-depth: 1
-          path: .${{ steps.extract_branch.outputs.branch }}-runs
+          path: .runs-cache
+          lfs: true
+          token: ${{ secrets.GH_PAT_BSM }}
 
-
-## This restore output is temporarily uncommented while debugging runs
-      # - name: Restore output files from the previous run
-      #   if: steps.runs-exist.outcome == 'success'
-      #   run: |
-      #     for (dest in scan(".${{ steps.extract_branch.outputs.branch }}-runs/.targets-files", what = character())) {
-      #       source <- file.path(".${{ steps.extract_branch.outputs.branch }}-runs", dest)
-      #       if (!file.exists(dirname(dest))) dir.create(dirname(dest), recursive = TRUE)
-      #       if (file.exists(source)) file.rename(source, dest)
-      #     }
-      #   shell: Rscript {0}
-
-#      - name: Run targets pipeline
-#        run: targets::tar_make(callr_function = NULL)
-#        shell: Rscript {0}
-#      - name: Identify files that the targets pipeline produced
-#        run: git ls-files -mo --exclude=renv > .targets-files
+      - name: Restore targets store from runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        run: |
+          git -C .runs-cache lfs checkout || true
+          if [ -d .runs-cache/_targets ]; then
+            rm -rf _targets
+            cp -a .runs-cache/_targets .
+            echo "Restored _targets from ${{ steps.runs-cache.outputs.ref }}"
+          else
+            echo "No _targets/ in runs cache; cold start"
+          fi
 
       - name: Run targets pt 1
         run: |
-          Sys.setenv(HOME="/home/rstudio")
-          cmdstanr::set_cmdstan_path("/home/rstudio/.cmdstanr/cmdstan-2.28.1")
+          Sys.setenv(HOME = "/home/rstudio")
+          # Prefer /opt (new portable image); fall back to legacy ~/.cmdstanr.
+          candidates <- c(
+            "/opt/cmdstan/current",
+            Sys.glob("/home/rstudio/.cmdstanr/cmdstan-*"),
+            Sys.glob("/opt/cmdstan/cmdstan-*")
+          )
+          ok <- nzchar(candidates) & vapply(candidates, dir.exists, logical(1))
+          cmdstan_dir <- candidates[ok][1]
+          if (is.na(cmdstan_dir) || !nzchar(cmdstan_dir)) {
+            stop("CmdStan not found under /opt/cmdstan or /home/rstudio/.cmdstanr")
+          }
+          message("Using CmdStan at ", cmdstan_dir)
+          # Clear a stale/missing CMDSTAN from the job env, then set the real path
+          # for this process and subsequent workflow steps.
+          Sys.unsetenv("CMDSTAN")
+          Sys.unsetenv("CMDSTAN_PATH")
+          cmdstanr::set_cmdstan_path(cmdstan_dir)
+          gh_env <- Sys.getenv("GITHUB_ENV", unset = "")
+          if (nzchar(gh_env)) {
+            cat(
+              sprintf("CMDSTAN=%s\nCMDSTAN_PATH=%s\n", cmdstan_dir, cmdstan_dir),
+              file = gh_env,
+              append = TRUE
+            )
+          }
           cmdstanr::check_cmdstan_toolchain()
-          #cmdstanr::install_cmdstan()
         shell: Rscript {0}
-
-      - name: Verify credentials
-        run: |
-          pwd
-          ls
-          ./.github/decrypt_secret.sh
-          ls ~/.config/earthengine
-          earthengine -h
-        env:
-          RGEE_SECRET: ${{ secrets.RGEE_SECRET }}
-        continue-on-error: true
-
-#      - name: check on files
-#        run: |
-#          file data/raw_data/ndvi_modis/2021_12_19.tif
-#          file data/raw_data/ndvi_modis/2022_01_01.tif
-#        continue-on-error: true
 
       - name: Run targets pt 2
         run: |
-          targets::tar_destroy(destroy = "all",ask = FALSE)
+          Sys.setenv(
+            HOME = "/home/rstudio",
+            OMP_NUM_THREADS = "1",
+            OPENBLAS_NUM_THREADS = "1",
+            VECLIB_MAXIMUM_THREADS = "1"
+          )
+          message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
+          outdated <- tryCatch(targets::tar_outdated(), error = function(e) character())
+          message(
+            "Cache check: ", length(outdated), " outdated target(s)",
+            if (length(outdated)) paste0(": ", paste(outdated, collapse = ", ")) else ""
+          )
+          # Incremental make. tar_destroy("all") cold builds (weather ~32m +
+          # website ~32m / ~570MB) starve the hosted runner ("lost communication").
           targets::tar_make()
         shell: Rscript {0}
 
       - name: Create the runs branch if it does not already exist
-        if: steps.runs-exist.outcome != 'success'
+        if: steps.runs-cache.outputs.is_branch_runs != 'true'
         run: git checkout --orphan ${{ steps.extract_branch.outputs.branch }}-runs
 
       - name: Put the worktree in the runs branch if the latter already exists
-        if: steps.runs-exist.outcome == 'success'
+        if: steps.runs-cache.outputs.is_branch_runs == 'true'
         run: |
-          rm -r .git
-          mv .${{ steps.extract_branch.outputs.branch }}-runs/.git .
-          rm -r .${{ steps.extract_branch.outputs.branch }}-runs
+          rm -rf .git
+          mv .runs-cache/.git .
+          rm -rf .runs-cache
+
+      - name: Cleanup main-runs cache worktree
+        if: steps.runs-cache.outputs.found == 'true' && steps.runs-cache.outputs.is_branch_runs != 'true'
+        run: rm -rf .runs-cache
 
       - name: Upload latest run
+        # Pipeline success is the PR gate; push can still fail if PAT lacks write.
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
         run: |
           git config --local user.name "GitHub Actions"
           git config --local user.email "actions@github.com"
-          rm -r .github/workflows # .gitignore 
+          # Force PAT credentials (checkout/.git may still be github-actions[bot]).
+          git remote set-url origin "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          rm -rf .github/workflows # .gitignore
+          # Ephemeral downloads — keep _targets store only for cache reuse.
+          rm -rf data/temp
           git lfs track _targets/objects/* #use git LFS to track the targets output (larger files)
           # git lfs track "data/**"
-          git add --all -- ':!renv'
-          for file in $(git ls-files -mo --exclude=renv)
+          git add --all
+          for file in $(git ls-files -mo)
           do
             git add -f $file
           done
           git commit -am "Run pipeline"
           git push origin ${{ steps.extract_branch.outputs.branch }}-runs
-      
-      # - name: Upload latest run (commit & push to <branch>-runs)
-      #   run: |
-      #     git config --local user.name "GitHub Actions"
-      #     git config --local user.email "actions@github.com"
-
-      #     rm -r .github/workflows
-
-      #     if [ -f .gitattributes ]; then
-      #       git add .gitattributes
-      #       git add --renormalize .
-      #     fi
-
-      #     git add --all -- ':!renv'
-
-      #     # for file in $(git ls-files -mo --exclude-standard -- ':!:renv/*'); do
-      #     #   git add -f "$file" || true
-      #     # done
-      #     for file in $(git ls-files -moi --exclude-standard -- _targets/ data/ ':!:renv/*'); do
-      #       git add -f "$file" || true
-      #     done
-
-      #     git commit -m "Run pipeline" || echo "Nothing to commit"
-      #     git push origin ${{ steps.extract_branch.outputs.branch }}-runs
-
 
       - name: Prepare failure artifact
         if: failure()
-        run: rm -rf .git .github .targets-files .${{ steps.extract_branch.outputs.branch }}-runs
+        run: rm -rf .git .github .targets-files .runs-cache
 
       - name: Post failure artifact
         if: failure()

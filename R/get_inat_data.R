@@ -41,6 +41,75 @@ protected_areas <- st_as_sf(protected_areas)
     }
 
 
+  # Read in original inat project data
+
+    if(verbose){message("Getting original inat data")}
+
+    inat_proj_data <- read.csv(inat_data_location)
+
+    species_list <-
+    inat_proj_data %>%
+      pull(scientific_name)%>%
+      unique()
+
+    # Get all species in invasive taxa
+    invasive_species=grep(species_list, pattern = paste(invasive_taxa, collapse="|"),value=T)
+
+  # PR / light CI: skip live API + heavy park union (OOM-killed callr on GHA).
+  # Build invasive records from the CSV seed with a cheap bbox filter instead.
+  if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+    message(
+      "EMMA_CI_LIGHT=1: building inat_data from CSV seed only (",
+      length(invasive_species), " invasive taxa names); no live iNaturalist API"
+    )
+    inv <- inat_proj_data %>%
+      filter(
+        .data$scientific_name %in% invasive_species,
+        .data$observed_on > oldest_date,
+        !is.na(.data$longitude),
+        !is.na(.data$latitude)
+      )
+    if (!nrow(inv)) {
+      warning(
+        "EMMA_CI_LIGHT CSV seed had no invasive rows; returning empty sf.",
+        call. = FALSE
+      )
+      return(
+        sf::st_sf(
+          scientific_name = character(),
+          observed_on = as.Date(character()),
+          longitude = numeric(),
+          latitude = numeric(),
+          invasive = logical(),
+          geometry = sf::st_sfc(crs = "WGS84")
+        )
+      )
+    }
+    inv_sf <- inv %>%
+      st_as_sf(
+        coords = c("longitude", "latitude"),
+        remove = FALSE,
+        crs = "WGS84"
+      )
+    parks_bb <- protected_areas %>%
+      st_transform("WGS84") %>%
+      st_bbox() %>%
+      st_as_sfc()
+    inv_sf <- inv_sf[lengths(st_intersects(inv_sf, parks_bb)) > 0L, ]
+    inv_sf <- inv_sf %>%
+      mutate(invasive = TRUE) %>%
+      dplyr::select(
+        "scientific_name",
+        "observed_on",
+        "longitude",
+        "latitude",
+        "invasive",
+        "geometry"
+      )
+    message("EMMA_CI_LIGHT inat_data rows: ", nrow(inv_sf))
+    return(inv_sf)
+  }
+
   # get domain
 
     if(verbose){message("Getting domain")}
@@ -60,22 +129,7 @@ protected_areas <- st_as_sf(protected_areas)
       st_buffer(dist = park_buffer) %>%
       st_union(domain)-> parks_and_domain
 
-  # Read in original inat project data
-
-    if(verbose){message("Getting original inat data")}
-
-    inat_proj_data <- read.csv(inat_data_location)
-
-    species_list <-
-    inat_proj_data %>%
-      pull(scientific_name)%>%
-      unique()
-
     full_records <-NULL
-
-    # Get all species in invasive taxa
-    invasive_species=grep(species_list, pattern = paste(invasive_taxa, collapse="|"),value=T)
-
 
   if(verbose){message("Starting for loop for downloading new inat data")}
 
@@ -85,14 +139,22 @@ protected_areas <- st_as_sf(protected_areas)
 
     # get data
 
-    data_i <-   tryCatch(expr =get_inat_obs(taxon_name = invasive_species[i],
-                                                 bounds = domain,
-                                                 maxresults = 10000),error = function(e){e})
+    data_i <- tryCatch(
+      get_inat_obs(
+        taxon_name = invasive_species[i],
+        bounds = domain,
+        maxresults = 10000
+      ),
+      error = function(e) e
+    )
 
-
-    # if nothing is returned or other error occurs, move on
-
-    if(inherits(x = data_i,what = "error")){next}
+    # rinat often returns NULL (with a message) when the API is down — not an error.
+    if (inherits(data_i, "error") ||
+        is.null(data_i) ||
+        !inherits(data_i, "data.frame") ||
+        nrow(data_i) == 0L) {
+      next
+    }
 
     # filter by date
 
@@ -130,10 +192,32 @@ protected_areas <- st_as_sf(protected_areas)
 
   }
 
+    # If every species query failed (common when iNaturalist is down), return an
+    # empty sf so downstream report targets can still run.
+    if (is.null(full_records) ||
+        !inherits(full_records, "data.frame") ||
+        nrow(full_records) == 0L) {
+      warning(
+        "No iNaturalist records retrieved (API unavailable or all queries empty). ",
+        "Returning an empty sf object so the pipeline can continue.",
+        call. = FALSE
+      )
+      return(
+        sf::st_sf(
+          scientific_name = character(),
+          observed_on = as.Date(character()),
+          longitude = numeric(),
+          latitude = numeric(),
+          invasive = logical(),
+          geometry = sf::st_sfc(crs = "WGS84")
+        )
+      )
+    }
+
     # add flag for invasive species of interest - use the str_detect if you are downloading all species above.
 
     full_records <- full_records |>
-      mutate(invasive = T)
+      mutate(invasive = TRUE)
     #str_detect(string = scientific_name ,
     #                               pattern = paste(invasive_taxa, collapse="|")))
 

@@ -42,6 +42,11 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
   # Domain outline from static_data/domain.tif (replaces legacy raw_static/domain.gpkg)
 
     domain <- get_domain_polygon(dest_dir = temp_directory, overwrite = FALSE)
+    # as.polygons() can return many parts; dissolve before intersects.
+    domain <- domain |>
+      sf::st_make_valid() |>
+      sf::st_union() |>
+      sf::st_as_sf()
 
   # Match projections
 
@@ -66,12 +71,15 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
     #                 y = st_make_valid(all_pas))%>%
     #   dplyr::select(-domain)
 
-    #Use this if you just want intersecting parks, even the bits outside our domain
-    all_pas <- all_pas[which(as.logical(st_intersects(x = all_pas, y = domain))),] %>%
-                  st_make_valid()
+    # Prefer lengths()/sparse intersects — as.logical(sgbp) fails on multi-part
+    # domains with "'list' object cannot be coerced to type 'logical'".
+    keep_pas <- lengths(sf::st_intersects(all_pas, domain)) > 0L
+    all_pas <- all_pas[keep_pas, ] %>%
+      st_make_valid()
 
-    cn <- cn[which(as.logical(st_intersects(x = cn, y = domain))),]%>%
-              st_make_valid()
+    keep_cn <- lengths(sf::st_intersects(cn, domain)) > 0L
+    cn <- cn[keep_cn, ] %>%
+      st_make_valid()
 
   # merge capenature and sanparks into single parks polygon layer
     cn2 <-  cn |>
@@ -103,13 +111,28 @@ get_park_polygons <- function(temp_directory = "data/temp/parks",
                quiet = TRUE
                )
 
-    # release gpkg
+    # Optional release upload — must not fail the pipeline on API/asset issues.
+    # Skip on light CI: robust_pb_upload retries on missing releases for many minutes.
+      if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+        message("EMMA_CI_LIGHT=1: skipping protected_areas.gpkg upload")
+      } else {
+        tryCatch(
+          {
+            robust_pb_upload(
+              file = file.path(temp_directory, "protected_areas.gpkg"),
+              repo = REPORT_REPO,
+              tag = park_data_tag
+            )
+          },
+          error = function(e) {
+            message("Skipping protected_areas.gpkg upload: ", conditionMessage(e))
+          }
+        )
+      }
 
-      robust_pb_upload(file = file.path(temp_directory, "protected_areas.gpkg"),
-                       repo = REPORT_REPO,
-                       tag = park_data_tag)
-
-      file.remove(file.path(temp_directory, "protected_areas.gpkg"))
+      if (file.exists(file.path(temp_directory, "protected_areas.gpkg"))) {
+        file.remove(file.path(temp_directory, "protected_areas.gpkg"))
+      }
 
   # cleanup
       unlink(file.path(temp_directory),

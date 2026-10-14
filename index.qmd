@@ -104,7 +104,7 @@ Click on a park below to view park specific reports.
 protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_areas,fun=quantile,na.rm=T) |> 
   as_tibble() |> 
   select(-1) |> #drop the index
-  rename("Q0"="EVI","Q25"="EVI.1","Q50"="EVI.2","Q75"="EVI.3","Q100"="EVI.4") |> 
+  rename("Q0"="evi","Q25"="evi.1","Q50"="evi.2","Q75"="evi.3","Q100"="evi.4") |> 
   bind_cols(name=protected_areas$name)
 
 ```

@@ -79,15 +79,21 @@ get_stations_data <- function(temp_directory, protected_areas){
 
 update_climate_data_gsod <- function(protected_areas,stations, temp_directory){
 
-    # PR light CI: GSOD multi-station downloads (~30m) OOM/starve hosted runners.
+    # PR light CI: skip GSOD entirely (empty weather_data).
     if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
       message("EMMA_CI_LIGHT=1: skipping GSOD station downloads; empty weather_data")
       return(tibble::tibble())
     }
 
-    # Reports discard weather before 1970; do not download decades of unused years.
-    min_year <- 1970L
+    # Reports discard weather before 1970; on GHA keep a shorter window so
+    # full-pipeline main/schedule jobs finish within runner limits.
     this_year <- year(Sys.Date())
+    min_year <- if (identical(Sys.getenv("GITHUB_ACTIONS"), "true")) {
+      message("GITHUB_ACTIONS: limiting GSOD downloads to last 5 years")
+      this_year - 4L
+    } else {
+      1970L
+    }
 
     # # Download station data
       for(i in 1:nrow(stations)){

@@ -1,0 +1,4 @@
+# *-runs thin tip: store _targets as regular git blobs (no Git LFS).
+# Orphan-reset and CI upload avoid LFS so force-push/upload works when the
+# org LFS budget is exhausted. Old LFS history may still bill until the
+# org budget is raised/cleared and GitHub GCs unreferenced LFS objects.

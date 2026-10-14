@@ -33,9 +33,16 @@ options(clustermq.scheduler = "multicore")
 geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 
 # PR CI sets EMMA_CI_LIGHT=1 to skip website / live GSOD / live iNat (GHA OOM).
+# Full Quarto (~40 park reports) is also too brittle/slow for hosted runners
+# even when EMMA_CI_LIGHT=0 — stub website whenever GITHUB_ACTIONS=true so
+# push/schedule still validate envdata / EVI / fire / inat / stations.
 ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
+ci_actions <- identical(Sys.getenv("GITHUB_ACTIONS"), "true")
 if (ci_light) {
   message("EMMA_CI_LIGHT=1: light pipeline mode for pull_request CI")
+}
+if (ci_actions && !ci_light) {
+  message("GITHUB_ACTIONS: stubbing Quarto website; data targets still run full")
 }
 
 tar_option_set(packages = c("piggyback","cmdstanr", "posterior", "bayesplot", "tidyverse",
@@ -245,14 +252,25 @@ tar_age(name = inat_data,
    #                               ... = spatial_outputs)),
 
 
-    # Full Quarto site (~30m / ~570MB) is for push/schedule; PRs use a stub.
-    if (ci_light) {
+    # Full Quarto site (~30m / ~570MB) is for local/non-CI runs.
+    # On GitHub Actions (PR light or main full), stub docs/ so runners validate
+    # data targets without park-report Quarto brittleness.
+    if (ci_light || ci_actions) {
       tar_target(
         name = website,
         command = {
           dir.create("docs", showWarnings = FALSE, recursive = TRUE)
-          marker <- "docs/.emma_ci_light_skip"
-          writeLines("skipped Quarto website (EMMA_CI_LIGHT=1)", marker)
+          marker <- if (ci_light) {
+            "docs/.emma_ci_light_skip"
+          } else {
+            "docs/.emma_ci_actions_skip"
+          }
+          reason <- if (ci_light) {
+            "skipped Quarto website (EMMA_CI_LIGHT=1)"
+          } else {
+            "skipped Quarto website (GITHUB_ACTIONS; render locally)"
+          }
+          writeLines(reason, marker)
           marker
         },
         format = "file"

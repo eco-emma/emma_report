@@ -1062,10 +1062,18 @@ This table summarizes the date this report was generated and the most recent obs
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated
 
+weather_updated <- if (isTRUE(has_weather) &&
+                       is.data.frame(focal_weather) &&
+                       "date_time" %in% names(focal_weather) &&
+                       nrow(focal_weather) > 0L) {
+  format(max(focal_weather$date_time, na.rm = TRUE), "%Y-%b-%d")
+} else {
+  "unavailable"
+}
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
   data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
-  data.frame(Description = "Weather", Date = format(max(focal_weather$date_time), "%Y-%b-%d"))
+  data.frame(Description = "Weather", Date = weather_updated)
 ) |> 
   select(Description, "Date last updated"=Date)
 

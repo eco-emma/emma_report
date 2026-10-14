@@ -1,0 +1,266 @@
+# Phase D / R4 — website job (restore _targets; Quarto; eco-emma Pages).
+# Actions website stub remains until Phase E (after D green ≥1 week).
+# Pages deploy is wired here but skipped while the stub marker is present.
+
+on:
+  # After targets-data succeeds on the same ref (main schedule / push / dispatch).
+  workflow_run:
+    workflows: ["targets-data"]
+    types: [completed]
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+name: targets-website
+
+jobs:
+  targets-website:
+    # Skip failed upstream data runs; always allow PR / manual dispatch.
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # Quarto park site ~32m / ~570MB; fail loud instead of hanging until runner kill.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    container: adamwilsonlab/emma:latest
+    env:
+      GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
+      GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
+      # PRs stay light. Push/schedule still stub Quarto under GITHUB_ACTIONS until Phase E.
+      EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+    outputs:
+      stubbed: ${{ steps.summarize.outputs.stubbed }}
+      deployable: ${{ steps.summarize.outputs.deployable }}
+    steps:
+      - name: Resolve source ref and branch
+        id: ref
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+            branch="${{ github.event.workflow_run.head_branch }}"
+          elif [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            sha="${{ github.event.pull_request.head.sha }}"
+            branch="${{ github.head_ref }}"
+          else
+            sha="${{ github.sha }}"
+            branch="${{ github.ref_name }}"
+          fi
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ref.outputs.sha }}
+          lfs: "true"
+          fetch-depth: 1
+          token: ${{ secrets.GH_PAT_BSM }}
+
+      - name: Whitelist directory
+        run: git config --global --add safe.directory /__w/emma_report/emma_report
+
+      - name: Checkout LFS objects
+        run: git lfs checkout
+        continue-on-error: true
+
+      - name: Resolve runs cache ref
+        id: runs-cache
+        shell: bash
+        run: |
+          branch="${{ steps.ref.outputs.branch }}"
+          if git ls-remote --exit-code --heads origin "${branch}-runs"; then
+            echo "ref=${branch}-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --heads origin main-runs; then
+            echo "ref=main-runs" >> "$GITHUB_OUTPUT"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.runs-cache.outputs.ref }}
+          fetch-depth: 1
+          path: .runs-cache
+          lfs: true
+          token: ${{ secrets.GH_PAT_BSM }}
+
+      - name: Restore targets store from runs cache
+        if: steps.runs-cache.outputs.found == 'true'
+        run: |
+          git -C .runs-cache lfs checkout || true
+          if [ -d .runs-cache/_targets ]; then
+            rm -rf _targets
+            cp -a .runs-cache/_targets .
+            echo "Restored _targets from ${{ steps.runs-cache.outputs.ref }}"
+          else
+            echo "No _targets/ in runs cache; cold start"
+          fi
+          rm -rf .runs-cache
+
+      - name: Run targets pt 1
+        run: |
+          Sys.setenv(HOME = "/home/rstudio")
+          candidates <- c(
+            "/opt/cmdstan/current",
+            Sys.glob("/home/rstudio/.cmdstanr/cmdstan-*"),
+            Sys.glob("/opt/cmdstan/cmdstan-*")
+          )
+          ok <- nzchar(candidates) & vapply(candidates, dir.exists, logical(1))
+          cmdstan_dir <- candidates[ok][1]
+          if (is.na(cmdstan_dir) || !nzchar(cmdstan_dir)) {
+            stop("CmdStan not found under /opt/cmdstan or /home/rstudio/.cmdstanr")
+          }
+          message("Using CmdStan at ", cmdstan_dir)
+          Sys.unsetenv("CMDSTAN")
+          Sys.unsetenv("CMDSTAN_PATH")
+          cmdstanr::set_cmdstan_path(cmdstan_dir)
+          gh_env <- Sys.getenv("GITHUB_ENV", unset = "")
+          if (nzchar(gh_env)) {
+            cat(
+              sprintf("CMDSTAN=%s\nCMDSTAN_PATH=%s\n", cmdstan_dir, cmdstan_dir),
+              file = gh_env,
+              append = TRUE
+            )
+          }
+          cmdstanr::check_cmdstan_toolchain()
+        shell: Rscript {0}
+
+      - name: Run website target
+        run: |
+          Sys.setenv(
+            HOME = "/home/rstudio",
+            OMP_NUM_THREADS = "1",
+            OPENBLAS_NUM_THREADS = "1",
+            VECLIB_MAXIMUM_THREADS = "1"
+          )
+          message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
+          message("GITHUB_ACTIONS=", Sys.getenv("GITHUB_ACTIONS", unset = "<unset>"))
+          message("Phase D website job: tar_make(names = website)")
+          # Rebuilds missing file deps (e.g. reports/*.qmd) from restored _targets.
+          # Under GITHUB_ACTIONS the website target remains the Phase A stub until Phase E.
+          targets::tar_make(names = any_of("website"))
+        shell: Rscript {0}
+
+      - name: Summarize website status
+        id: summarize
+        if: always()
+        shell: bash
+        run: |
+          stubbed=false
+          if [ -f docs/.emma_ci_actions_skip ] || [ -f docs/.emma_ci_light_skip ]; then
+            stubbed=true
+          fi
+
+          # Deploy only full HTML from main (workflow_run / dispatch on main).
+          deployable=false
+          if [ "$stubbed" = "false" ] && [ -f docs/index.html ]; then
+            case "${{ github.event_name }}" in
+              workflow_run)
+                if [ "${{ steps.ref.outputs.branch }}" = "main" ] || [ "${{ steps.ref.outputs.branch }}" = "master" ]; then
+                  deployable=true
+                fi
+                ;;
+              workflow_dispatch)
+                if [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.ref }}" = "refs/heads/master" ]; then
+                  deployable=true
+                fi
+                ;;
+            esac
+          fi
+
+          echo "stubbed=${stubbed}" >> "$GITHUB_OUTPUT"
+          echo "deployable=${deployable}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## emma_report targets-website summary"
+            echo ""
+            if [ "$stubbed" = "true" ]; then
+              echo "website: stubbed"
+              echo ""
+              echo "Quarto park site was **not** rendered. ✅ ≠ full HTML (Phase E removes stub)."
+              if [ -f docs/.emma_ci_actions_skip ]; then
+                echo ""
+                echo '```'
+                cat docs/.emma_ci_actions_skip
+                echo '```'
+              fi
+              if [ -f docs/.emma_ci_light_skip ]; then
+                echo ""
+                echo '```'
+                cat docs/.emma_ci_light_skip
+                echo '```'
+              fi
+              echo ""
+              echo "pages-deploy: skipped (stubbed)"
+            elif [ -f docs/index.html ]; then
+              echo "website: full"
+              if [ "$deployable" = "true" ]; then
+                echo "pages-deploy: queued (eco-emma GitHub Pages)"
+              else
+                echo "pages-deploy: skipped (not main / not dispatch)"
+              fi
+            else
+              echo "website: missing"
+              echo "pages-deploy: skipped"
+            fi
+            echo ""
+            echo "EMMA_CI_LIGHT=${EMMA_CI_LIGHT}"
+            echo "branch=${{ steps.ref.outputs.branch }}"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload docs artifact for Pages
+        if: steps.summarize.outputs.deployable == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-docs
+          path: docs/
+          if-no-files-found: error
+
+      - name: Prepare failure artifact
+        if: failure()
+        run: rm -rf .git .github .targets-files .runs-cache
+
+      - name: Post failure artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: targets-website-failure
+          path: .
+          if-no-files-found: ignore
+
+  # Host-only deploy (no R/Quarto). Requires Pages source = GitHub Actions.
+  deploy-pages:
+    needs: targets-website
+    if: needs.targets-website.outputs.deployable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download docs artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: site-docs
+          path: docs
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - name: Deploy to eco-emma GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

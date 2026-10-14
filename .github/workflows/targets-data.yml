@@ -1,30 +1,9 @@
-# classic
-
-
-# MIT License
-# Copyright (c) 2021 Eli Lilly and Company
-# Author: William Michael Landau (will.landau at gmail)
-# Written with help from public domain (CC0 1.0 Universal) workflow files by Jim Hester:
-# * https://github.com/r-lib/actions/blob/master/examples/check-full.yaml
-# * https://github.com/r-lib/actions/blob/master/examples/blogdown.yaml
+# Phase D / R4 — data job (tar_make except website).
+# Thin *-runs upload (D0 / R4b). Quarto / Pages live in targets-website.yml.
 #
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+# Stack: merge after #26 (thin runs) and ideally #28 (download flip + 06:00 cron).
+# This workflow already includes thin upload + 06:00 UTC schedule so it can land
+# standalone; rebase onto those PRs if they merge first to avoid double-editing.
 
 on:
   push:
@@ -37,22 +16,18 @@ on:
     branches:
       - main
       - master
-
-# Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
   schedule:
-   # - cron:  '1 0 * * 0' #every sunday just after midnight
-    - cron:  '0 0 * * *' #daily at midnight
+    # After emma_envdata midnight UTC jobs so consumers see fresh releases.
+    - cron: "0 6 * * *" # daily 06:00 UTC (Phase C / R3b)
 
-name: targets
+name: targets-data
 
 jobs:
-  targets:
+  targets-data:
     runs-on: ubuntu-latest
-    # Combined data+website job until Phase D split; cold weather+website can
-    # approach ~90m wall-clock. Fail loud instead of hanging until runner kill.
-    timeout-minutes: 120
-    # Push <branch>-runs after tar_make; default GITHUB_TOKEN is read-only on PRs.
+    # Data downloads + targets store; free ubuntu-latest only.
+    timeout-minutes: 90
     permissions:
       contents: write
       actions: read
@@ -63,12 +38,9 @@ jobs:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
       # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
       GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
-      # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
-      # Push/schedule: EMMA_CI_LIGHT=0 but website is still stubbed under GITHUB_ACTIONS
-      # (see _targets.R); summary step labels website: stubbed so ✅ ≠ full HTML.
+      # PRs: EMMA_CI_LIGHT=1. Push/schedule: website still stubbed under GITHUB_ACTIONS
+      # until Phase E; this job excludes the website target entirely.
       EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
-      # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
-      # the path and exports it via GITHUB_ENV for later steps.
     steps:
       - name: Extract branch name
         id: extract_branch
@@ -81,22 +53,24 @@ jobs:
             branch="${GITHUB_REF_NAME}"
           fi
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
-          lfs:  'true'
+          lfs: "true"
           # Source tip only; full history is not needed for tar_make / runs upload.
           fetch-depth: 1
           # Configure git remote with PAT so push of <branch>-runs is allowed.
-          # Without this, PR jobs push as github-actions[bot] and get 403.
           token: ${{ secrets.GH_PAT_BSM }}
+
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
+
       - name: Checkout LFS objects
         run: git lfs checkout
         continue-on-error: true
 
       # Prefer <branch>-runs; fall back to main-runs so PR cold starts are not
-      # forced through a full weather+website rebuild (OOM / lost communication).
+      # forced through a full rebuild (OOM / lost communication).
       - name: Resolve runs cache ref
         id: runs-cache
         shell: bash
@@ -152,8 +126,6 @@ jobs:
             stop("CmdStan not found under /opt/cmdstan or /home/rstudio/.cmdstanr")
           }
           message("Using CmdStan at ", cmdstan_dir)
-          # Clear a stale/missing CMDSTAN from the job env, then set the real path
-          # for this process and subsequent workflow steps.
           Sys.unsetenv("CMDSTAN")
           Sys.unsetenv("CMDSTAN_PATH")
           cmdstanr::set_cmdstan_path(cmdstan_dir)
@@ -168,7 +140,7 @@ jobs:
           cmdstanr::check_cmdstan_toolchain()
         shell: Rscript {0}
 
-      - name: Run targets pt 2
+      - name: Run targets pt 2 (except website)
         run: |
           Sys.setenv(
             HOME = "/home/rstudio",
@@ -177,46 +149,28 @@ jobs:
             VECLIB_MAXIMUM_THREADS = "1"
           )
           message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
+          message("Phase D data job: tar_make excluding website")
           outdated <- tryCatch(targets::tar_outdated(), error = function(e) character())
           message(
             "Cache check: ", length(outdated), " outdated target(s)",
             if (length(outdated)) paste0(": ", paste(outdated, collapse = ", ")) else ""
           )
-          # Incremental make. tar_destroy("all") cold builds (weather ~32m +
-          # website ~32m / ~570MB) starve the hosted runner ("lost communication").
-          targets::tar_make()
+          # Quarto / website is isolated in targets-website.yml.
+          targets::tar_make(names = !any_of("website"))
         shell: Rscript {0}
 
-      - name: Summarize website status
+      - name: Summarize data job
         if: always()
         shell: bash
         run: |
           {
-            echo "## emma_report CI summary"
+            echo "## emma_report targets-data summary"
             echo ""
-            if [ -f docs/.emma_ci_actions_skip ] || [ -f docs/.emma_ci_light_skip ]; then
-              echo "website: stubbed"
-              echo ""
-              echo "Quarto park site was **not** rendered. Schedule/push ✅ means data targets only."
-              if [ -f docs/.emma_ci_actions_skip ]; then
-                echo ""
-                echo '```'
-                cat docs/.emma_ci_actions_skip
-                echo '```'
-              fi
-              if [ -f docs/.emma_ci_light_skip ]; then
-                echo ""
-                echo '```'
-                cat docs/.emma_ci_light_skip
-                echo '```'
-              fi
-            elif [ -f docs/index.html ]; then
-              echo "website: full"
-            else
-              echo "website: missing"
-            fi
-            echo ""
+            echo "job: targets-data (website excluded)"
             echo "EMMA_CI_LIGHT=${EMMA_CI_LIGHT}"
+            echo ""
+            echo "Website / Pages: see workflow \`targets-website\` (Phase D)."
+            echo "Actions Quarto stub remains until Phase E (≥1 week green full site)."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Create the runs branch if it does not already exist
@@ -260,7 +214,6 @@ jobs:
           test -f .gitattributes
 
           # Drop any previously tracked bloat from the index (bloated main-runs tip).
-          # Keep the worktree otherwise; we only stage the thin cache paths below.
           git rm -r --cached -f --ignore-unmatch . >/dev/null 2>&1 || true
 
           # _targets is gitignored on main — force-add ONLY these paths.
@@ -306,7 +259,8 @@ jobs:
 
       - name: Post failure artifact
         if: failure()
-        uses: actions/upload-artifact@main
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ runner.os }}-r${{ matrix.config.r }}-results
+          name: targets-data-failure
           path: .
+          if-no-files-found: ignore

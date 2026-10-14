@@ -12,11 +12,60 @@ There is **no host-side R or `renv::restore()`** path for this workflow.
 | Where | Command |
 |---|---|
 | Laptop | `docker run --rm -v "$PWD":/work -w /work -e GITHUB_PAT adamwilsonlab/emma:latest Rscript -e 'targets::tar_make()'` |
-| GitHub Actions | `container: adamwilsonlab/emma:latest` in `.github/workflows/targets.yaml` |
+| GitHub Actions | `container: adamwilsonlab/emma:latest` in `targets-data.yml` / `targets-website.yml` |
 | HPC (CCR) | `apptainer exec … AdamWilsonLab-emma_docker-latest.sif Rscript -e 'targets::tar_make()'` (see emma_docker README) |
 
 Package versions are pinned in the emma_docker **Dockerfile** (P3M snapshot).
 To bump packages, change that Dockerfile, rebuild/push the image, then re-run.
+
+## CI: data vs website split (Phase D / R4)
+
+Free `ubuntu-latest` only; both jobs use `adamwilsonlab/emma:latest`.
+
+| Workflow | Role | Timeout |
+|---|---|---|
+| [`targets-data.yml`](.github/workflows/targets-data.yml) | `tar_make` **except** `website`; thin `*-runs` upload | 90m |
+| [`targets-website.yml`](.github/workflows/targets-website.yml) | Restore `_targets`; make `website`; deploy **eco-emma** Pages | 120m |
+
+- Schedule: **06:00 UTC** daily on the data workflow (`0 6 * * *`); website follows via `workflow_run` after a successful data run.
+- Until **Phase E**, Actions still **stubs** Quarto whenever `GITHUB_ACTIONS=true` (see `_targets.R`). Job summaries label `website: stubbed`. Stub-green ≠ full park HTML.
+- Pages deploy runs only when the website job produced **non-stub** `docs/index.html` on `main`. While the stub is active, deploy is skipped on purpose.
+
+### GitHub Pages (eco-emma) — Adam ops
+
+Current Pages source is legacy **`main-runs` / `docs`**. After this split lands, switch to Actions:
+
+1. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions** (not “Deploy from a branch”).
+2. Confirm the **`github-pages`** environment exists (created automatically on first `deploy-pages` run, or create it under Settings → Environments).
+3. Keep custom domain **`emma.eco`** / HTTPS as today; no change to org host (**eco-emma**, not a personal pages org).
+4. No new secret is required for Pages when using `actions/deploy-pages` (`GITHUB_TOKEN` + `pages: write` / `id-token: write` on the deploy job).
+5. Still rotate **`GH_PAT_BSM`** to a token with `contents:write` on `eco-emma/emma_report` so thin `*-runs` uploads succeed (soft-fail today).
+
+Do **not** publish the site via `main-runs` after D0 thin upload (that tip has no `docs/`).
+
+## CI `*-runs` cache (Phase D0 / R4b)
+
+GitHub Actions pushes a **`<branch>-runs`** branch after each successful **data** job.
+That ref is a **targets store cache only**:
+
+| Allowed on `*-runs` tip | Forbidden (never force-add) |
+|---|---|
+| `_targets/` (Git LFS) | `docs/`, `reports/`, `.quarto/`, `site_libs/` |
+| `.gitattributes` | `*.html.md`, ephemeral `data/temp/` |
+
+Source checkout uses `fetch-depth: 1`; restore copies `_targets/` only.
+Website / Pages deploy is **not** via `main-runs`.
+
+**Ops follow-up (reclaim ~5 GB history):** after thin-upload lands on `main`, orphan-reset bloated runs refs (force-push of the runs branch only — does not rewrite `main`):
+
+```bash
+DRY_RUN=1 ./scripts/orphan-reset-runs-branch.sh main-runs
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh main-runs
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale targets-runs
+CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-runs
+```
+
+Runs upload is **soft-fail** (`continue-on-error: true`): data-job ✅ tracks `tar_make`, not runs-branch auth. If the summary shows `runs-upload: failed (soft)`, rotate `GH_PAT_BSM`.
 
 # EMMA workflow overview
 
@@ -106,6 +155,7 @@ Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
   - Renamed all report product identifiers from the old vegetation-index naming to `evi` (targets, Quarto, paths, docs).
   - Added `R/envdata_contract.R` as the single source of release-tag and download helpers for the report pipeline.
   - Runtime contract: always execute inside `adamwilsonlab/emma` (no host `renv` / `update.packages`); removed GEE from CI.
+  - Phase D: split CI into `targets-data` / `targets-website`; thin `*-runs`; Pages deploy path for eco-emma (stub retained until Phase E).
 * May 14, 2024
   - Added a new section to the README to describe the data used by the workflow and where it is stored.  Added a new section to describe the releases and what they contain.  Added a new section to describe the changelog.
 * May 13, 2024 - Significant updates to the report website including:

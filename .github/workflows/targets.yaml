@@ -62,7 +62,8 @@ jobs:
       GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
       # PRs: skip Quarto website, live GSOD, live iNat, park uploads (GHA OOM).
       # Push/schedule keep the full pipeline.
-      EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+      # This branch forces full mode so we can validate main/schedule before merge.
+      EMMA_CI_LIGHT: ${{ (github.event_name == 'pull_request' && github.head_ref != 'cursor/main-ci-full-pipeline-e284') && '1' || '0' }}
       # Do not preset CMDSTAN to /opt until that image is published; pt1 discovers
       # the path and exports it via GITHUB_ENV for later steps.
     steps:

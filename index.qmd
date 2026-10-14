@@ -31,9 +31,9 @@ library(leaflet)
 library(forcats)
 
 # need to include all necessary targets here otherwise they aren't dependencies with tar_quarto()
+# temp_directory is a pipeline constant (not a tar_target) — do not tar_load it.
 tar_load(protected_areas)
 tar_load(park_fire_history)
-tar_load(temp_directory)
 tar_load(years_since_fire.tif)
 tar_load(fires_wgs)
 tar_load(most_recent_evi.tif)

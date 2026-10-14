@@ -35,12 +35,12 @@ jobs:
     # Packages come from the image site-library — do not renv::restore() or update.packages().
     container: adamwilsonlab/emma:latest
     env:
-      GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
+      GITHUB_PAT: ${{ secrets.GH_PAT }}
       # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
-      GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
       # PRs: EMMA_CI_LIGHT=1. Parks/weather/iNat download from emma_envdata
-      # releases (fail loud if missing). Push/schedule: website still stubbed under
-      # GITHUB_ACTIONS until Phase E; this job excludes the website target entirely.
+      # releases (fail loud if missing). This job always excludes the website
+      # target; full Quarto runs in targets-website.yml (Phase E).
       EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
     steps:
       - name: Extract branch name
@@ -61,7 +61,7 @@ jobs:
           # Source tip only; full history is not needed for tar_make / runs upload.
           fetch-depth: 1
           # Configure git remote with PAT so push of <branch>-runs is allowed.
-          token: ${{ secrets.GH_PAT_BSM }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
@@ -99,7 +99,7 @@ jobs:
           path: .runs-cache
           # Thin *-runs tips store _targets as normal git blobs (no LFS).
           lfs: false
-          token: ${{ secrets.GH_PAT_BSM }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
@@ -172,8 +172,7 @@ jobs:
             echo "job: targets-data (website excluded)"
             echo "EMMA_CI_LIGHT=${EMMA_CI_LIGHT}"
             echo ""
-            echo "Website / Pages: see workflow \`targets-website\` (Phase D)."
-            echo "Actions Quarto stub remains until Phase E (≥1 week green full site)."
+            echo "Website / Pages: see workflow \`targets-website\` (Phase E full Quarto)."
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Create the runs branch if it does not already exist
@@ -193,10 +192,8 @@ jobs:
 
       - name: Upload latest run
         id: upload-runs
-        # Pipeline success is the job gate. GH_PAT_BSM may lack write on eco-emma
-        # (main @ 65263b7e failed push as bmaitner 403 after green tar_make + stub).
-        # Soft-fail so schedule/push ✅ tracks data targets, not runs-branch auth.
-        # Ops: rotate GH_PAT_BSM to a token with contents:write on this repo for cache reuse.
+        # Pipeline success is the job gate. Soft-fail so schedule/push ✅ tracks
+        # data targets, not runs-branch auth. Secret GH_PAT needs contents:write.
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -253,7 +250,7 @@ EOF
             elif [ "${{ steps.upload-runs.outcome }}" = "skipped" ]; then
               echo "runs-upload: skipped"
             else
-              echo "runs-upload: failed (soft) — pipeline still green; fix GH_PAT_BSM write access"
+              echo "runs-upload: failed (soft) — pipeline still green; fix GH_PAT write access"
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 

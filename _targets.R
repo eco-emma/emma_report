@@ -36,6 +36,8 @@ geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 # Full Quarto (~40 park reports) is also too brittle/slow for hosted runners
 # even when EMMA_CI_LIGHT=0 — stub website whenever GITHUB_ACTIONS=true so
 # push/schedule still validate envdata / EVI / fire / inat / stations.
+# Phase D splits data vs website jobs (targets-data.yml / targets-website.yml);
+# remove this Actions stub only in Phase E after ≥1 week of green full-site runs.
 ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
 ci_actions <- identical(Sys.getenv("GITHUB_ACTIONS"), "true")
 if (ci_light) {

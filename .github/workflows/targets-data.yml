@@ -38,8 +38,9 @@ jobs:
       GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
       # gh CLI (list_release_assets fast path) reads GH_TOKEN, not GITHUB_PAT.
       GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
-      # PRs: EMMA_CI_LIGHT=1. Push/schedule: website still stubbed under GITHUB_ACTIONS
-      # until Phase E; this job excludes the website target entirely.
+      # PRs: EMMA_CI_LIGHT=1. Parks/weather/iNat download from emma_envdata
+      # releases (fail loud if missing). Push/schedule: website still stubbed under
+      # GITHUB_ACTIONS until Phase E; this job excludes the website target entirely.
       EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
     steps:
       - name: Extract branch name

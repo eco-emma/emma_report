@@ -83,16 +83,7 @@ generate_reports <- function(output_directory = "reports/",
     #spatial_outputs <- tar_load(spatial_outputs)
 
 
-  # create output release if needed
-
-    if(!park_data_tag %in% report_files$tag){
-
-      pb_release_create(repo = REPORT_REPO,
-                        tag = park_data_tag)
-
-    }
-
-
+  # park_data release creation retired — parks SoT is emma_envdata@static_data
 
   for (park_name in unique(parks$national_parks$CUR_NME)[1]){# remove [1] to process them all!
 

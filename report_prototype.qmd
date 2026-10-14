@@ -309,7 +309,7 @@ n_stations=3 # number of stations to show
       tibble::tibble()
     }
 
-  # Empty on GITHUB_ACTIONS / when NOAA is down — skip climate chunks, keep park report.
+  # Empty weather.parquet (allowed) or no nearby stations — skip climate chunks.
   has_weather <- is.data.frame(focal_weather) && nrow(focal_weather) >= 1L
   if (!has_weather) {
     message("No weather data loaded; skipping climate figures for this park")
@@ -829,7 +829,7 @@ Figure 3. Histogram of vegetation ages. For the purposes of this plot, any veget
 ## Weather Data
 
 ```{r weather_unavailable, echo=FALSE, results='asis', eval=!has_weather}
-cat("*Climate figures unavailable: no GSOD weather data for nearby stations.*\n")
+cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weather_data`) for nearby stations.*\n")
 ```
 
 ```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE, eval=has_weather}
@@ -879,7 +879,7 @@ dygraph(focal_precip_trans,
 
 ```{r plot_precip, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
-#|   - "Figure 4. Climate Data from GSOD.  Mean data is a long-term average for each day of the year across these weather stations."
+#|   - "Figure 4. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
   #This code chunk plots the targets visualization.
   # I do this in two steps to avoid errors that otherwise can occur
 
@@ -889,7 +889,7 @@ dygraph(focal_precip_trans,
 
 ```{r plot_temp, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
-#|   - "Figure 5. Climate Data from GSOD.  Mean data is a long-term average for each day of the year across these weather stations."
+#|   - "Figure 5. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
 
 
   #This code chunk plots the targets visualization.

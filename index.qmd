@@ -101,10 +101,12 @@ Click on a park below to view park specific reports.
 
 ```{r, echo=F, warning=F}
 
+# Quantile extract column names follow the terra layer name (e.g. "evi", "Years");
+# rename by position so website CI survives layer-name changes.
 protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_areas,fun=quantile,na.rm=T) |> 
   as_tibble() |> 
   select(-1) |> #drop the index
-  rename("Q0"="evi","Q25"="evi.1","Q50"="evi.2","Q75"="evi.3","Q100"="evi.4") |> 
+  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |> 
   bind_cols(name=protected_areas$name)
 
 ```
@@ -135,10 +137,11 @@ protected_areas_monthly_delta_evi |>
 # Stand Age distributions
 
 ```{r, echo=F, warning=F}
+# Layer is named "Years" (see get_years_since_fire.tif); rename by position.
 years_since_fire <- extract(years_since_fire.tif,protected_areas,fun=quantile,na.rm=T) |> 
   as_tibble() |> 
   select(-1) |> #drop the index
-  rename("Q0"="lyr.1","Q25"="lyr.1.1","Q50"="lyr.1.2","Q75"="lyr.1.3","Q100"="lyr.1.4") |> 
+  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |> 
   bind_cols(name=protected_areas$name)
 
 ```
@@ -170,10 +173,17 @@ See table below for dates each dataset was last updated and download links.
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated
 
+weather_updated <- if (is.data.frame(weather_data) &&
+                       "YEARMODA" %in% names(weather_data) &&
+                       nrow(weather_data) > 0L) {
+  format(max(weather_data$YEARMODA, na.rm = TRUE), "%Y-%b-%d")
+} else {
+  "unavailable"
+}
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
   data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
-  data.frame(Description = "Weather", Date = format(max(weather_data$YEARMODA), "%Y-%b-%d"))
+  data.frame(Description = "Weather", Date = weather_updated)
 ) |> 
   select(Description, "Date last updated"=Date)
 

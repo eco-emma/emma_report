@@ -34,19 +34,11 @@ geotargets_option_set(gdal_vector_driver="ESRI Shapefile")
 
 # PR CI sets EMMA_CI_LIGHT=1 to stub Quarto website only.
 # Parks / weather / iNat are download-only from emma_envdata releases (fail loud
-# if assets missing). Full Quarto (~40 park reports) is also too brittle/slow for
-# hosted runners even when EMMA_CI_LIGHT=0 — stub website whenever
-# GITHUB_ACTIONS=true so push/schedule still validate envdata / EVI / fire /
-# inat / stations.
-# Phase D splits data vs website jobs (targets-data.yml / targets-website.yml);
-# remove this Actions stub only in Phase E after ≥1 week of green full-site runs.
+# if assets missing). Push/schedule (EMMA_CI_LIGHT=0) run full Quarto in
+# targets-website.yml (Phase E); data job still excludes the website target.
 ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
-ci_actions <- identical(Sys.getenv("GITHUB_ACTIONS"), "true")
 if (ci_light) {
   message("EMMA_CI_LIGHT=1: light pipeline mode for pull_request CI")
-}
-if (ci_actions && !ci_light) {
-  message("GITHUB_ACTIONS: stubbing Quarto website; data targets still run full")
 }
 
 tar_option_set(packages = c("piggyback","cmdstanr", "posterior", "bayesplot", "tidyverse",
@@ -243,25 +235,15 @@ tar_age(name = inat_data,
    #                               ... = spatial_outputs)),
 
 
-    # Full Quarto site (~30m / ~570MB) is for local/non-CI runs.
-    # On GitHub Actions (PR light or main full), stub docs/ so runners validate
-    # data targets without park-report Quarto brittleness.
-    if (ci_light || ci_actions) {
+    # Full Quarto site (~30m / ~570MB) on push/schedule / local.
+    # PR CI (EMMA_CI_LIGHT=1) stubs docs/ so data targets stay cheap to validate.
+    if (ci_light) {
       tar_target(
         name = website,
         command = {
           dir.create("docs", showWarnings = FALSE, recursive = TRUE)
-          marker <- if (ci_light) {
-            "docs/.emma_ci_light_skip"
-          } else {
-            "docs/.emma_ci_actions_skip"
-          }
-          reason <- if (ci_light) {
-            "skipped Quarto website (EMMA_CI_LIGHT=1)"
-          } else {
-            "skipped Quarto website (GITHUB_ACTIONS; render locally)"
-          }
-          writeLines(reason, marker)
+          marker <- "docs/.emma_ci_light_skip"
+          writeLines("skipped Quarto website (EMMA_CI_LIGHT=1)", marker)
           marker
         },
         format = "file"

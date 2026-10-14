@@ -1,6 +1,6 @@
-# Phase D / R4 — website job (restore _targets; Quarto; eco-emma Pages).
-# Actions website stub remains until Phase E (after D green ≥1 week).
-# Pages deploy is wired here but skipped while the stub marker is present.
+# Phase E / R4 — website job (restore _targets; full Quarto; eco-emma Pages).
+# PRs keep EMMA_CI_LIGHT=1 (light skip). Push/schedule render the full park site.
+# Pages deploy when non-stub docs/index.html exists on main.
 
 on:
   # After targets-data succeeds on the same ref (main schedule / push / dispatch).
@@ -29,9 +29,9 @@ jobs:
       actions: read
     container: adamwilsonlab/emma:latest
     env:
-      GITHUB_PAT: ${{ secrets.GH_PAT_BSM }}
-      GH_TOKEN: ${{ secrets.GH_PAT_BSM }}
-      # PRs stay light. Push/schedule still stub Quarto under GITHUB_ACTIONS until Phase E.
+      GITHUB_PAT: ${{ secrets.GH_PAT }}
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      # PRs stay light. Push/schedule (EMMA_CI_LIGHT=0) run full Quarto.
       EMMA_CI_LIGHT: ${{ github.event_name == 'pull_request' && '1' || '0' }}
     outputs:
       stubbed: ${{ steps.summarize.outputs.stubbed }}
@@ -59,7 +59,7 @@ jobs:
           ref: ${{ steps.ref.outputs.sha }}
           lfs: "true"
           fetch-depth: 1
-          token: ${{ secrets.GH_PAT_BSM }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
@@ -92,7 +92,7 @@ jobs:
           path: .runs-cache
           # Thin *-runs tips store _targets as normal git blobs (no LFS).
           lfs: false
-          token: ${{ secrets.GH_PAT_BSM }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
@@ -145,10 +145,9 @@ jobs:
             VECLIB_MAXIMUM_THREADS = "1"
           )
           message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
-          message("GITHUB_ACTIONS=", Sys.getenv("GITHUB_ACTIONS", unset = "<unset>"))
-          message("Phase D website job: tar_make(names = website)")
+          message("Phase E website job: tar_make(names = website)")
           # Rebuilds missing file deps (e.g. reports/*.qmd) from restored _targets.
-          # Under GITHUB_ACTIONS the website target remains the Phase A stub until Phase E.
+          # EMMA_CI_LIGHT=0 → full tar_quarto; PR light mode writes .emma_ci_light_skip.
           targets::tar_make(names = any_of("website"))
         shell: Rscript {0}
 
@@ -158,7 +157,7 @@ jobs:
         shell: bash
         run: |
           stubbed=false
-          if [ -f docs/.emma_ci_actions_skip ] || [ -f docs/.emma_ci_light_skip ]; then
+          if [ -f docs/.emma_ci_light_skip ] || [ -f docs/.emma_ci_actions_skip ]; then
             stubbed=true
           fi
 
@@ -186,19 +185,25 @@ jobs:
             echo "## emma_report targets-website summary"
             echo ""
             if [ "$stubbed" = "true" ]; then
-              echo "website: stubbed"
-              echo ""
-              echo "Quarto park site was **not** rendered. ✅ ≠ full HTML (Phase E removes stub)."
-              if [ -f docs/.emma_ci_actions_skip ]; then
+              if [ "${{ github.event_name }}" = "pull_request" ]; then
+                echo "website: light (EMMA_CI_LIGHT=1)"
                 echo ""
-                echo '```'
-                cat docs/.emma_ci_actions_skip
-                echo '```'
+                echo "PR CI skips Quarto on purpose. Push/schedule must show \`website: full\`."
+              else
+                echo "website: unexpected stub"
+                echo ""
+                echo "Phase E expects full Quarto when EMMA_CI_LIGHT=0."
               fi
               if [ -f docs/.emma_ci_light_skip ]; then
                 echo ""
                 echo '```'
                 cat docs/.emma_ci_light_skip
+                echo '```'
+              fi
+              if [ -f docs/.emma_ci_actions_skip ]; then
+                echo ""
+                echo '```'
+                cat docs/.emma_ci_actions_skip
                 echo '```'
               fi
               echo ""
@@ -208,7 +213,7 @@ jobs:
               if [ "$deployable" = "true" ]; then
                 echo "pages-deploy: queued (eco-emma GitHub Pages)"
               else
-                echo "pages-deploy: skipped (not main / not dispatch)"
+                echo "pages-deploy: skipped (not main / not deploy event)"
               fi
             else
               echo "website: missing"
@@ -218,6 +223,14 @@ jobs:
             echo "EMMA_CI_LIGHT=${EMMA_CI_LIGHT}"
             echo "branch=${{ steps.ref.outputs.branch }}"
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          # Non-PR success means a real park site (not a stub marker).
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            if [ "$stubbed" = "true" ] || [ ! -f docs/index.html ]; then
+              echo "ERROR: full website required on non-PR runs (got stubbed=${stubbed})" >&2
+              exit 1
+            fi
+          fi
 
       - name: Upload docs artifact for Pages
         if: steps.summarize.outputs.deployable == 'true'

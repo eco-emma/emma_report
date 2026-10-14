@@ -235,8 +235,12 @@ jobs:
         run: rm -rf .runs-cache
 
       - name: Upload latest run
-        # Pipeline success is the PR gate; push can still fail if PAT lacks write.
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        id: upload-runs
+        # Pipeline success is the job gate. GH_PAT_BSM may lack write on eco-emma
+        # (main @ 65263b7e failed push as bmaitner 403 after green tar_make + stub).
+        # Soft-fail so schedule/push ✅ tracks data targets, not runs-branch auth.
+        # Ops: rotate GH_PAT_BSM to a token with contents:write on this repo for cache reuse.
+        continue-on-error: true
         run: |
           set -euo pipefail
           git config --local user.name "GitHub Actions"
@@ -280,6 +284,21 @@ jobs:
             git commit -m "Run pipeline (targets cache only)"
           fi
           git push origin "${{ steps.extract_branch.outputs.branch }}-runs"
+
+      - name: Note runs-upload outcome
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo ""
+            if [ "${{ steps.upload-runs.outcome }}" = "success" ]; then
+              echo "runs-upload: ok"
+            elif [ "${{ steps.upload-runs.outcome }}" = "skipped" ]; then
+              echo "runs-upload: skipped"
+            else
+              echo "runs-upload: failed (soft) — pipeline still green; fix GH_PAT_BSM write access"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare failure artifact
         if: failure()

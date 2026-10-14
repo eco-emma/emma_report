@@ -87,6 +87,11 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-ru
 Do **not** run the force-push from unattended CI; Adam (or a maintainer) runs
 it once manually after confirming a recent thin tip has `_targets/`.
 
+Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
+✅ tracks `tar_make`, not runs-branch auth. If the summary shows
+`runs-upload: failed (soft)`, rotate `GH_PAT_BSM` to a token with
+`contents:write` on `eco-emma/emma_report` so the thin cache can be reused.
+
 ## Releases
 
 * GSOD contains weather data from the [Global Surface Summary of the Day](https://www.ncei.noaa.gov/metadata/geoportal/rest/metadata/item/gov.noaa.ncdc:C00516/html), which are extracted using [GSODR](https://cran.r-project.org/package=GSODR). The file "gsod_stations" contains metadata on the stations within the focal domain, and the other files contain data for each weather station in the area. Files are in Apache Arrow format.

@@ -160,8 +160,9 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-ru
 ```
 
 Do **not** run the force-push from unattended CI; Adam (or a maintainer) runs
-it once manually after confirming a recent tip has `_targets/`. Pull the fixed
-script from `main` first (no LFS track on the orphan tip).
+it once manually after confirming a recent tip has real `_targets/objects`
+(not LFS pointer text). The script aborts if objects are still pointers —
+heal via `targets-data` upload first, then orphan-reset.
 
 Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
 ✅ tracks `tar_make`, not runs-branch auth. If the summary shows

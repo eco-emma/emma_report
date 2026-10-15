@@ -60,8 +60,10 @@ jobs:
           lfs: "true"
           # Source tip only; full history is not needed for tar_make / runs upload.
           fetch-depth: 1
-          # Configure git remote with PAT so push of <branch>-runs is allowed.
-          token: ${{ secrets.GH_PAT }}
+          # Use GITHUB_TOKEN (job contents:write). Do NOT pass secrets.GH_PAT here:
+          # checkout persists it as http.*.extraheader, which overrides the push
+          # remote URL and still authenticates as the PAT user (adammwilson → 403).
+          token: ${{ github.token }}
 
       - name: Whitelist directory
         run: git config --global --add safe.directory /__w/emma_report/emma_report
@@ -99,7 +101,8 @@ jobs:
           path: .runs-cache
           # Thin *-runs tips store _targets as normal git blobs (no LFS).
           lfs: false
-          token: ${{ secrets.GH_PAT }}
+          # Same as source checkout: GITHUB_TOKEN only (see comment above).
+          token: ${{ github.token }}
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
@@ -220,6 +223,10 @@ jobs:
           set -euo pipefail
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # actions/checkout writes AUTHORIZATION into http.extraheader; that
+          # header wins over credentials embedded in the remote URL. Clear it
+          # (and any stale GH_PAT header from older tips) before pushing.
+          git config --local --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           # Phase D0 / R4b hard gate: *-runs tip is _targets cache only.

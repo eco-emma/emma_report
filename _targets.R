@@ -199,6 +199,15 @@ tar_terra_rast(name = monthly_delta_evi.tif,
                command = get_monthly_delta_evi.tif(most_recent_evi.tif,monthly_mean_evi.tif),
                filetype="COG"),
 
+# Long-term mean / delta (W0.2). MODIS-only interim; W4 adds VIIRS-first fuse.
+tar_terra_rast(name = mean_evi.tif,
+               command = get_mean_evi.tif(env_files, temp_directory),
+               filetype = "COG"),
+
+tar_terra_rast(name = delta_evi.tif,
+               command = get_delta_evi.tif(most_recent_evi.tif, mean_evi.tif),
+               filetype = "COG"),
+
 # iNat SoT: emma_envdata@inat_data/inat_invasives.gpkg (download-only; no live API)
 tar_age(name = inat_data,
               command = get_inat_data(temp_directory = temp_directory, verbose = TRUE),
@@ -209,7 +218,9 @@ tar_age(name = inat_data,
               command = get_fire_history(temp_directory = temp_directory,
                                          max_attempts = 10,
                                          sleep_time = 10,
-                                         protected_areas = protected_areas),
+                                         protected_areas = protected_areas,
+                                         n_recent = 24L,
+                                         n_years = 20L),
            # age = as.difftime(7, units = "days") #weekly updates
            # age = as.difftime(1, units = "days") #daily updates
             age = as.difftime(28, units = "days") #will update monthly

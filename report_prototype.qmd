@@ -43,8 +43,8 @@ tar_load(most_recent_evi_date)
 tar_load(monthly_mean_evi.tif)
 tar_load(monthly_delta_evi.tif)
 tar_load(weather_data)
-#tar_load(mean_evi.tif)
-#tar_load(delta_evi.tif)
+tar_load(mean_evi.tif)
+tar_load(delta_evi.tif)
 #tar_load(most_recent_quarter_evi_file)
 #tar_load(quarterly_delta_evi.tif)
 tar_load(stations)
@@ -259,13 +259,32 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
                            domain =  c(-1,0,1),
                            na.color = "transparent")
   
-  #max_delta_evi <- max(abs(values(delta_evi.tif)),na.rm = TRUE)
-  max_delta_evi <- max(abs(values(monthly_delta_evi.tif)),na.rm = TRUE)
-  
-  delta_evi_pal <- colorNumeric(palette = c( "brown", "white","forestgreen"),
-                                 #domain =  values(most_recent_evi.tif),
-                                 domain =  c(max_delta_evi*-1,max_delta_evi),
-                                 na.color = "transparent")
+  max_delta_evi <- max(
+    c(
+      abs(terra::values(monthly_delta_evi.tif)),
+      abs(terra::values(delta_evi.tif))
+    ),
+    na.rm = TRUE
+  )
+
+  delta_evi_pal <- colorNumeric(
+    palette = c("brown", "white", "forestgreen"),
+    domain = c(max_delta_evi * -1, max_delta_evi),
+    na.color = "transparent"
+  )
+
+  # Raster overlay uses true ages; polygon color scale stays truncated at 20.
+  ysf_vals <- terra::values(years_since_fire.tif)
+  ysf_domain <- range(ysf_vals[is.finite(ysf_vals) & ysf_vals >= 0], na.rm = TRUE)
+  if (!all(is.finite(ysf_domain))) {
+    ysf_domain <- c(0, 20)
+  }
+  years_since_fire_pal <- colorNumeric(
+    palette = "Reds",
+    domain = ysf_domain,
+    reverse = TRUE,
+    na.color = "transparent"
+  )
 
   ndwi_pal <- colorNumeric(palette = c( "#FFFFCC", "#41B6C4","#0C2C84"),
                            #domain =  values(terra::rast(ndwi_rast)),
@@ -589,19 +608,34 @@ park_map <- leaflet(data = focal_wgs) %>%
     group = "delta EVI<br/>(monthly)",
     colors = delta_evi_pal
   ) %>%
+  addRasterImage(
+    x = raster::raster(delta_evi.tif),
+    group = "delta EVI<br/>(long-term)",
+    colors = delta_evi_pal
+  ) %>%
+  addRasterImage(
+    x = raster::raster(years_since_fire.tif),
+    group = "Years since fire",
+    colors = years_since_fire_pal,
+    opacity = 0.7
+  ) %>%
   hideGroup("delta EVI<br/>(quarterly)")
 
-# Permanent empty-iNat guard: leaflet crashes on addCircleMarkers with zero rows.
+# Permanent empty-iNat guard: leaflet crashes on markers with zero rows.
+# Small green Font Awesome leaves (~scale 0.3 via styles.css).
 if (isTRUE(has_focal_invasives)) {
+  invasive_icons <- awesomeIcons(
+    icon = "leaf",
+    library = "fa",
+    markerColor = "green",
+    iconColor = "white"
+  )
   park_map <- park_map %>%
-    addCircleMarkers(
+    addAwesomeMarkers(
       data = focal_invasives,
       label = invasive_labels,
       group = "Invasives (new)",
-      stroke = FALSE,
-      fillOpacity = 1,
-      fillColor = "darkgrey",
-      radius = 5
+      icon = invasive_icons
     )
 }
 
@@ -612,7 +646,7 @@ park_map <- park_map %>%
     fill = TRUE,
     fillOpacity = 0,
     stroke = TRUE,
-    label = paste(fires_wgs$Years, "years since burn"),
+    label = paste(round(fires_wgs$Years, 1), "years since burn"),
     weight = 1,
     group = "Fire Outlines"
   ) %>%
@@ -621,7 +655,7 @@ park_map <- park_map %>%
     color = ~antipal(Years),
     fillOpacity = .75,
     stroke = FALSE,
-    label = fires_wgs$Years,
+    label = round(fires_wgs$Years, 1),
     group = "Fires"
   )
 
@@ -646,7 +680,9 @@ if (isTRUE(has_focal_stations)) {
 park_map <- park_map %>%
   hideGroup("Stations") %>%
   hideGroup("EVI") %>%
-  hideGroup("delta EVI<br/>(long-term)")
+  hideGroup("delta EVI<br/>(long-term)") %>%
+  hideGroup("Years since fire") %>%
+  hideGroup("Fires")
 
 if (isTRUE(has_focal_invasives)) {
   park_map <- park_map %>% hideGroup("Invasives (new)")
@@ -658,6 +694,7 @@ overlay_groups <- c(
   "delta EVI<br/>(monthly)",
   "delta EVI<br/>(long-term)",
   "EVI",
+  "Years since fire",
   "Fire Outlines",
   "Fires"
 )
@@ -697,13 +734,11 @@ park_map %>%
 
 ```
 
-Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the most recent fire, and recent invasive species records. NA values in the delta and EVI layers indicate missing data (e.g. due to clouds, water, etc.). Monthly delta EVI is the difference between the latest MODIS Terra composite and the long-term mean for the same calendar month. EVI data are from `r most_recent_evi_date` (`vi_modis_terra_raster` via STAC). NA values in the fire layer indicate that no fires have been recorded for that area. Note that the color scale for fires has been truncated, and any sites with more than 20 years since fire appear as 20. The number of years since fire can be seen by hovering your cursor over the polygon of interest. Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif).
+Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). NA values in the delta and EVI layers indicate missing data (e.g. clouds, water). Monthly delta EVI is the latest composite minus the long-term mean for the same calendar month; long-term delta uses a MODIS Terra+Aqua mean (VIIRS-first fusion lands in a follow-up). EVI data are from `r most_recent_evi_date` (`vi_modis_terra_raster` via STAC). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The filled fire polygon color scale is truncated at 20 years for readability; hover labels and the years-since-fire raster use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
 
 ## Area burned and vegetation ages
 
 ```{r vegetation ages over time, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
-
-#Vegetation age polygons for the park are available at: `r park_fires_file`.
 
 # Subset park_fire_history to only the focal park
 
@@ -715,18 +750,40 @@ Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the 
                      touches = TRUE) %>%
     dplyr::select(cell) -> focal_cells
 
-  # subset fire data — keep only reshape columns. fireage parquet also carries
-  # sensor / fire_source / etc.; pivoting those with date cols fails
-  # (pivot_longer can't combine integer + character), as on Namaqua.
+  # ~500 m domain cells → hectares (EPSG:9221 metres)
+  cell_ha <- as.numeric(
+    terra::cellSize(most_recent_evi.tif, unit = "ha")[1]
+  )
+  if (!is.finite(cell_ha) || cell_ha <= 0) {
+    cell_ha <- prod(terra::res(most_recent_evi.tif)) / 1e4
+  }
+
+  # Keep age + censor fields. fire_count == 0 / NA last_burn_date ⇒ right-censored
+  # (envdata lower-bounds age at record start 2000-01-01). Do not collapse to 20.
+
+  park_fire_history_focal <- park_fire_history %>%
+    dplyr::filter(.data$cellID %in% focal_cells$cell)
+
+  if (!"last_burn_date" %in% names(park_fire_history_focal)) {
+    park_fire_history_focal$last_burn_date <- NA_real_
+  }
+  if (!"fire_count" %in% names(park_fire_history_focal)) {
+    park_fire_history_focal$fire_count <- NA_real_
+  }
 
   focal_fires <-
-    park_fire_history %>%
-    dplyr::filter(.data$cellID %in% focal_cells$cell) %>%
-    dplyr::select(dplyr::any_of(c("cellID", "date", "days_since_fire"))) %>%
-    # Multiple sensors/sources can share cellID+date; keep the youngest age.
+    park_fire_history_focal %>%
+    dplyr::select(
+      dplyr::any_of(c(
+        "cellID", "date", "days_since_fire", "last_burn_date", "fire_count"
+      ))
+    ) %>%
+    # Multiple sensors/sources can share cellID+date; keep youngest known age.
     dplyr::group_by(.data$cellID, .data$date) %>%
     dplyr::summarise(
       days_since_fire = suppressWarnings(min(.data$days_since_fire, na.rm = TRUE)),
+      last_burn_date = suppressWarnings(max(.data$last_burn_date, na.rm = TRUE)),
+      fire_count = suppressWarnings(max(.data$fire_count, na.rm = TRUE)),
       .groups = "drop"
     ) %>%
     dplyr::mutate(
@@ -734,103 +791,180 @@ Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the 
         is.infinite(.data$days_since_fire),
         NA_real_,
         .data$days_since_fire
+      ),
+      last_burn_date = dplyr::if_else(
+        is.infinite(.data$last_burn_date),
+        NA_real_,
+        .data$last_burn_date
+      ),
+      fire_count = dplyr::if_else(
+        is.infinite(.data$fire_count),
+        NA_real_,
+        .data$fire_count
+      ),
+      censored = is.na(.data$last_burn_date) |
+        (!is.na(.data$fire_count) & .data$fire_count <= 0)
+    )
+
+  if (nrow(focal_fires) == 0) {
+    fire_dates <- unique(park_fire_history$date)
+    if (length(fire_dates) < 1L) {
+      fire_dates <- as.Date(character())
+    }
+    focal_fires <- expand.grid(
+      cellID = focal_cells$cell,
+      date = fire_dates,
+      days_since_fire = NA_real_,
+      last_burn_date = NA_real_,
+      fire_count = NA_real_,
+      censored = TRUE,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # True ages for known burns only (no unknown→20 collapse)
+  ff2 <- focal_fires %>%
+    dplyr::mutate(
+      years_since_fire = .data$days_since_fire / 365.25,
+      date = lubridate::as_date(.data$date),
+      year = lubridate::year(.data$date)
+    ) %>%
+    dplyr::mutate(
+      years_since_fire = dplyr::if_else(
+        is.na(.data$years_since_fire) | .data$years_since_fire < 0,
+        NA_real_,
+        .data$years_since_fire
       )
     )
-  
-  
-  # if empty, fill in NAs
-  
-    if(nrow(focal_fires) == 0){
-      
-      fire_dates <- unique(park_fire_history$date)
-      if (length(fire_dates) < 1L) {
-        fire_dates <- as.Date(character())
-      }
-      focal_fires <- expand.grid(
-        cellID = focal_cells$cell,
-        date = fire_dates,
-        days_since_fire = NA_real_,
-        KEEP.OUT.ATTRS = FALSE,
-        stringsAsFactors = FALSE
+
+  censored_summary <- ff2 %>%
+    dplyr::group_by(.data$year) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      n_censored = sum(.data$censored, na.rm = TRUE),
+      fraction_censored = .data$n_censored / .data$n,
+      age_max = {
+        known_ages <- .data$years_since_fire[!.data$censored &
+          is.finite(.data$years_since_fire)]
+        if (length(known_ages) < 1L) {
+          0
+        } else {
+          max(known_ages, na.rm = TRUE)
+        }
+      },
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(label_x = pmax(.data$age_max, 1))
+
+  ff_known <- ff2 %>%
+    dplyr::filter(!.data$censored, is.finite(.data$years_since_fire)) %>%
+    dplyr::mutate(year = as.factor(.data$year))
+
+  if (nrow(ff_known) >= 1L) {
+    p1 <- ggplot(
+      ff_known,
+      mapping = aes(
+        x = years_since_fire,
+        y = year,
+        fill = after_stat(x)
       )
-      
-      
-    }
-  
-    
-  # dealing with missing cells/ages
-  
-    focal_fires %>%
-      tidyr::pivot_wider(
-        id_cols = "cellID",
-        names_from = "date",
-        values_from = "days_since_fire"
-      ) %>%
-      dplyr::full_join(y = focal_cells, by = c("cellID" = "cell")) %>%
-      tidyr::pivot_longer(
-        cols = -"cellID",
-        names_to = "date",
-        values_to = "days_since_fire"
-      ) %>%
-                mutate(cellID = as.factor(cellID),
-                       years_since_fire = days_since_fire/365.25,
-                       date =as.numeric(date))%>%
-                    mutate(date = as_date(date),
-                       year = year(date))%>%
-      mutate(years_since_fire = case_when(is.na(years_since_fire) ~ 20,
-                                          years_since_fire >= 0 ~ years_since_fire,
-                                          years_since_fire < 0 ~ 20)) -> ff2
-  
-        
-ff2 %>%
-  mutate(gte20 = years_since_fire >= 20) %>%
-  group_by(year,gte20) %>%
-  count()%>%
-  ungroup()%>%
-  group_by(year)%>%
-  mutate(total=sum(n))%>%
-  mutate(fraction = n/total)%>%
-  filter(gte20)-> unburned_summary        
-        
-ff2 %>%
-  filter(years_since_fire<20)%>%
-  mutate(year=as.factor(year))%>%
-ggplot(mapping = aes(x=years_since_fire,
-                     y=year,
-                     fill=after_stat(x)))+
-  geom_density_ridges_gradient()+
-  labs(fill = "Age")+
-  xlab("Vegetation Age Distribution")+
-  ylab("Year")+
-  theme_bw()+
-  theme(legend.position = "none")+
-  geom_text(data = unburned_summary,
-            aes(label = paste(round(fraction,2)*100,"%"),
-                y=as.factor(year),
-                x = max(ff2$years_since_fire)), 
-            position = position_stack(),
-            inherit.aes = F)+
-  scale_y_discrete(expand = c(.05, 0.2))+
-  coord_flip() -> p1
-        
+    ) +
+      ggridges::geom_density_ridges_gradient() +
+      labs(fill = "Age") +
+      xlab("Vegetation age (years, known burns)") +
+      ylab("Year") +
+      theme_bw() +
+      theme(legend.position = "none") +
+      geom_text(
+        data = censored_summary,
+        aes(
+          label = paste0(round(fraction_censored * 100), "% censored"),
+          y = as.factor(year),
+          x = label_x
+        ),
+        position = position_nudge(x = 0.5),
+        hjust = 0,
+        size = 3,
+        inherit.aes = FALSE
+      ) +
+      scale_y_discrete(expand = c(.05, 0.2)) +
+      coord_flip()
+  } else {
+    p1 <- ggplot() +
+      annotate(
+        "text",
+        x = 0.5,
+        y = 0.5,
+        label = "No known-burn age records in this window"
+      ) +
+      theme_void()
+  }
 
-focal_fires |> 
-  mutate(year=year(as_date(date))) |> 
-  group_by(year) |> 
-  summarize(area_burned=sum(ifelse(days_since_fire<45,1,0))) |>
-  ggplot(aes(x=year,y=area_burned))+
-  geom_line()+
-  ylab("Area Burned")+
-  xlab("")+
-   scale_x_continuous(
-      breaks = seq(min(year(as_date(focal_fires$date))), max(year(as_date(focal_fires$date))), by = 1)) ->  # One tick per year
-  p_burnedarea
+  # Calendar-year burned area from year(last_burn_date) on the latest snapshot
+  latest_fire_date <- suppressWarnings(max(ff2$date, na.rm = TRUE))
+  if (is.finite(latest_fire_date)) {
+    area_by_year <- ff2 %>%
+      dplyr::filter(
+        .data$date == latest_fire_date,
+        !is.na(.data$last_burn_date),
+        !.data$censored
+      ) %>%
+      dplyr::mutate(
+        burn_year = lubridate::year(lubridate::as_date(.data$last_burn_date))
+      ) %>%
+      dplyr::count(.data$burn_year, name = "n_cells") %>%
+      dplyr::mutate(area_ha = .data$n_cells * cell_ha) %>%
+      dplyr::arrange(.data$burn_year)
+  } else {
+    area_by_year <- tibble::tibble(
+      burn_year = integer(),
+      n_cells = integer(),
+      area_ha = numeric()
+    )
+  }
 
-plot_grid(p_burnedarea, p1, ncol=1, align = "v", labels = "AUTO",rel_heights = c(0.3,0.7),label_size = 0) 
-     
+  if (nrow(area_by_year) < 1L || sum(area_by_year$n_cells, na.rm = TRUE) < 1L) {
+    p_burnedarea <- ggplot() +
+      annotate(
+        "text",
+        x = 0.5,
+        y = 0.5,
+        label = "No burns recorded in this window"
+      ) +
+      theme_void() +
+      ggtitle("Area burned (calendar year)")
+  } else {
+    year_breaks <- seq(
+      min(area_by_year$burn_year, na.rm = TRUE),
+      max(area_by_year$burn_year, na.rm = TRUE),
+      by = 1
+    )
+    p_burnedarea <- ggplot(
+      area_by_year,
+      aes(x = burn_year, y = area_ha)
+    ) +
+      geom_col(width = 0.8, fill = "firebrick") +
+      ylab("Area burned (ha)") +
+      xlab("") +
+      scale_x_continuous(breaks = year_breaks) +
+      theme_bw() +
+      ggtitle("Area burned (calendar year of last burn)")
+  }
+
+  plot_grid(
+    p_burnedarea,
+    p1,
+    ncol = 1,
+    align = "v",
+    labels = "AUTO",
+    rel_heights = c(0.3, 0.7),
+    label_size = 0
+  )
+
 ```
 
-Figure 2. Top: Total area burned each year in the park.  Bottom: Ridgeplot histogram showing vegetation age distributions within the park over time. Percentages shown represent amount of vegetation that is 20 years old or older. Note that areas where fires are not known to have occurred have been assigned a vegetation age of 20 years.
+Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Bottom: Ridgeplot of **true** vegetation ages for cells with a known burn. Percentages label the share of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). Ages older than 20 years appear when the data support them.
 
 
 ```{r vegetation ages, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=F}

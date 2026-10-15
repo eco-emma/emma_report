@@ -287,7 +287,7 @@ bbox <- st_bbox(focal_wgs) %>%
 
 ```
 
-```{r identify_closest_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r identify_closest_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
 # Process the station and weather data (skipped when weather.parquet is empty).
 n_stations=3 # number of stations to show
@@ -353,50 +353,36 @@ n_stations=3 # number of stations to show
   
 ```
 
-```{r reformat_to_match_noaa, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r reformat_to_match_noaa, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
-  #fix station names in focal weather (missing in many case)
-  
-    # stations %>%
-    # dplyr::select(usaf,wban,station_name)%>%
-    # inner_join(y = focal_weather,
-    #            by = c("usaf"="usaf_station","wban"="wban_station"),
-    #            multiple = "all")%>%
-    # dplyr::rename(station_name = station_name.x)-> focal_weather
-
-  #with dygraphs, first element should be x axis, or else do it as an xts
-  
-  # probably easiest to do xts, since its a time series anyway
-  
-  # focal_weather %>%
-  #   as.data.frame() %>% #for some reason, this code throws an error without this line.  no idea why.
-  #   mutate(year = substr(x = date,1,4),
-  #          month = substr(x = date,5,6),
-  #          day = substr(x=date,7,8),
-  #          hour= substr(x=time,1,2),
-  #          minute = substr(x=time,3,4)) %>%
-  #   mutate(date_time = paste(year,month,day,hour,minute,sep = "-"))%>%
-  #   mutate(date_time = strptime(date_time,format = "%Y-%m-%d-%H-%M"))%>%
-  #   dplyr::filter(!is.na(date_time)) -> focal_weather
-  
-  
-  #reformatting the GSOD to match NOAA format
+  # emma_envdata@weather_data/weather.parquet schema (§0.2 / R1):
+  # STNID, YEARMODA (Date), TEMP (°C), PRCP (mm), NAME — not GSODR YEAR/MONTH/DAY.
 
   focal_weather %>%
     as.data.frame() %>%
-    dplyr::mutate(year = YEAR,
-                  month = MONTH,
-                  day = DAY,
-                  station_name = NAME,
-                  mean_precip_mm = PRCP,
-                  temp_c = TEMP) %>%
-    dplyr::mutate(date_time = paste(year,month,day,sep = "-")) %>%
-    dplyr::mutate(date_time = strptime(date_time,format = "%Y-%m-%d")) %>%
-    dplyr::filter(!is.na(date_time)) -> focal_weather
+    dplyr::mutate(
+      yearmoda_date = as.Date(.data$YEARMODA),
+      year = as.integer(format(.data$yearmoda_date, "%Y")),
+      month = as.integer(format(.data$yearmoda_date, "%m")),
+      day = as.integer(format(.data$yearmoda_date, "%d")),
+      station_name = .data$NAME,
+      mean_precip_mm = .data$PRCP,
+      temp_c = .data$TEMP,
+      date_time = as.POSIXct(.data$yearmoda_date, tz = "UTC")
+    ) %>%
+    dplyr::filter(!is.na(.data$date_time)) -> focal_weather
+
+  has_weather <- is.data.frame(focal_weather) && nrow(focal_weather) >= 1L
+  if (!has_weather) {
+    message("Weather rows failed YEARMODA reformat; skipping climate figures")
+    if (inherits(stations, "sf")) {
+      focal_stations_sf <- stations[FALSE, , drop = FALSE]
+    }
+  }
 
 ```
 
-```{r filter_old_weather_data, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r filter_old_weather_data, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
   
   #Filter out oldest data
   min_date = "1970-01-01"
@@ -406,7 +392,7 @@ n_stations=3 # number of stations to show
 
 ```
 
-```{r generate_precip_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r generate_precip_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
   
   #Generate precip dataset
   
@@ -499,7 +485,7 @@ focal_precip %>%
 
 ```
 
-```{r generate_temp_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r generate_temp_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
     #mean daily temp dataset
 
@@ -525,7 +511,7 @@ mutate(date_time = paste(year,month,day,sep = "-"))%>%
 
 ```
 
-```{r generate_sf_of_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
+```{r generate_sf_of_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
   
   
 #Generate sf of station points
@@ -879,11 +865,11 @@ Figure 3. Histogram of vegetation ages. For the purposes of this plot, any veget
 
 ## Weather Data
 
-```{r weather_unavailable, echo=FALSE, results='asis', eval=!has_weather}
+```{r weather_unavailable, echo=FALSE, results='asis', eval=!isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weather_data`) for nearby stations.*\n")
 ```
 
-```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE, eval=has_weather}
+```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
   # see: https://rstudio.github.io/dygraphs/
 
@@ -928,7 +914,7 @@ dygraph(focal_precip_trans,
 
 ```
 
-```{r plot_precip, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
+```{r plot_precip, echo=F, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
 #|   - "Figure 4. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
   #This code chunk plots the targets visualization.
@@ -938,7 +924,7 @@ dygraph(focal_precip_trans,
 
 ```
 
-```{r plot_temp, echo=F, eval=has_weather, message = F, fig.width = 10, fig.height = 6}
+```{r plot_temp, echo=F, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message = F, fig.width = 10, fig.height = 6}
 #| fig-cap: 
 #|   - "Figure 5. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
 

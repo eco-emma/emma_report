@@ -159,27 +159,35 @@ jobs:
             VECLIB_MAXIMUM_THREADS = "1"
           )
           message("EMMA_CI_LIGHT=", Sys.getenv("EMMA_CI_LIGHT", unset = "<unset>"))
+          ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
           # Park reports (generated under reports/) call tar_load(stations) etc. at
           # render time. tar_quarto does not always wire those as website deps, so
           # after LFS-pointer deletion the object files are missing and Quarto
-          # fails with gzfile/cannot open (run 38659006140). Build park deps first.
-          park_deps <- c(
-            "stations",
-            "weather_data",
-            "inat_data",
-            "protected_areas",
-            "park_fire_history",
-            "years_since_fire.tif",
-            "fires_wgs",
-            "most_recent_evi.tif",
-            "most_recent_evi_date",
-            "monthly_mean_evi.tif",
-            "monthly_delta_evi.tif",
-            "report_qmd_dir",
-            "report_location"
-          )
-          message("Phase E website job: tar_make park deps then website")
-          targets::tar_make(names = any_of(park_deps))
+          # fails with gzfile/cannot open (run 38659006140). Build park deps first
+          # on full (non-light) runs only. Inline names — any_of(park_deps) NSE fails
+          # under tar_make's tidyselect mask ("object 'park_deps' not found").
+          if (!ci_light) {
+            message("Phase E website job: tar_make park deps then website")
+            targets::tar_make(
+              names = any_of(
+                "stations",
+                "weather_data",
+                "inat_data",
+                "protected_areas",
+                "park_fire_history",
+                "years_since_fire.tif",
+                "fires_wgs",
+                "most_recent_evi.tif",
+                "most_recent_evi_date",
+                "monthly_mean_evi.tif",
+                "monthly_delta_evi.tif",
+                "report_qmd_dir",
+                "report_location"
+              )
+            )
+          } else {
+            message("Phase E website job: light mode — skip park deps, stub website")
+          }
           # EMMA_CI_LIGHT=0 → full tar_quarto; PR light mode writes .emma_ci_light_skip.
           targets::tar_make(names = any_of("website"))
         shell: Rscript {0}

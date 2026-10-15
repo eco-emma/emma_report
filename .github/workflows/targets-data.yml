@@ -103,6 +103,7 @@ jobs:
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
+        shell: bash
         run: |
           # Best-effort only for pre-orphan tips that still had LFS pointers.
           git -C .runs-cache lfs checkout 2>/dev/null || true
@@ -110,6 +111,18 @@ jobs:
             rm -rf _targets
             cp -a .runs-cache/_targets .
             echo "Restored _targets from ${{ steps.runs-cache.outputs.ref }}"
+            # Unresolved LFS pointers read as RDS → "unknown input format".
+            # Delete them so tar_make rebuilds those objects as real blobs.
+            n=0
+            if [ -d _targets/objects ]; then
+              while IFS= read -r -d '' f; do
+                if head -n1 "$f" 2>/dev/null | grep -qx 'version https://git-lfs.github.com/spec/v1'; then
+                  rm -f "$f"
+                  n=$((n + 1))
+                fi
+              done < <(find _targets/objects -type f -print0)
+            fi
+            echo "Removed ${n} unresolved LFS pointer object(s) for rebuild"
           else
             echo "No _targets/ in runs cache; cold start"
           fi
@@ -194,7 +207,11 @@ jobs:
         id: upload-runs
         # Pipeline success is the job gate. Soft-fail so schedule/push ✅ tracks
         # data targets, not runs-branch auth. Secret GH_PAT needs contents:write.
+        # Must use bash: container default sh rejects `set -o pipefail` and the
+        # step exits before any thin *-runs push (Phase E website then loads
+        # stale LFS pointer objects → tar_load readRDS "unknown input format").
         continue-on-error: true
+        shell: bash
         run: |
           set -euo pipefail
           git config --local user.name "GitHub Actions"
@@ -231,6 +248,22 @@ jobs:
             exit 1
           fi
 
+          # Refuse LFS pointer text masquerading as target objects (orphan tip
+          # without smudge). Website tar_load → readRDS "unknown input format".
+          ptrs=0
+          if [ -d _targets/objects ]; then
+            while IFS= read -r -d '' f; do
+              if head -n1 "$f" 2>/dev/null | grep -qx 'version https://git-lfs.github.com/spec/v1'; then
+                echo "ERROR: LFS pointer present: $f" >&2
+                ptrs=$((ptrs + 1))
+              fi
+            done < <(find _targets/objects -type f -print0)
+          fi
+          if [ "$ptrs" -gt 0 ]; then
+            echo "ERROR: refused to upload ${ptrs} LFS pointer object(s) to *-runs" >&2
+            exit 1
+          fi
+
           if git diff --cached --quiet; then
             echo "Nothing new in thin runs cache; skipping commit"
           else
@@ -249,7 +282,7 @@ jobs:
             elif [ "${{ steps.upload-runs.outcome }}" = "skipped" ]; then
               echo "runs-upload: skipped"
             else
-              echo "runs-upload: failed (soft) — pipeline still green; fix GH_PAT write access"
+              echo "runs-upload: failed (soft) — pipeline still green; check GH_PAT write + upload shell logs"
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 

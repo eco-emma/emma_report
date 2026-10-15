@@ -260,10 +260,10 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
                            na.color = "transparent")
   
   max_delta_evi <- max(
-    c(
-      abs(terra::values(monthly_delta_evi.tif)),
-      abs(terra::values(delta_evi.tif))
-    ),
+    abs(c(
+      terra::values(monthly_delta_evi.tif),
+      terra::values(delta_evi.tif)
+    )),
     na.rm = TRUE
   )
 
@@ -734,7 +734,7 @@ park_map %>%
 
 ```
 
-Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). NA values in the delta and EVI layers indicate missing data (e.g. clouds, water). Monthly delta EVI is the latest composite minus the long-term mean for the same calendar month; long-term delta uses a MODIS Terra+Aqua mean (VIIRS-first fusion lands in a follow-up). EVI data are from `r most_recent_evi_date` (`vi_modis_terra_raster` via STAC). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The filled fire polygon color scale is truncated at 20 years for readability; hover labels and the years-since-fire raster use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
+Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The filled fire polygon color scale is truncated at 20 years for readability; hover labels and the years-since-fire raster use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
 
 ## Area burned and vegetation ages
 
@@ -1286,7 +1286,10 @@ weather_updated <- if (isTRUE(has_weather) &&
 }
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
+  data.frame(
+    Description = "EVI (VIIRS→Terra→Aqua fill)",
+    Date = format(most_recent_evi_date, "%Y-%b-%d")
+  ),
   data.frame(Description = "Weather", Date = weather_updated)
 ) |> 
   select(Description, "Date last updated"=Date)

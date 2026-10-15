@@ -102,7 +102,8 @@ parks / weather / iNat — no live GSOD, rinat, or shapefile dissolve on GHA.
 | Park shapefile **inputs** (envdata writers only) | `manual-data` | Flat SACAD/SAPAD/CapeNature assets (no nested folders) — not report SoT |
 | MODIS Terra / Aqua VI COGs | `vi_modis_terra_raster`, `vi_modis_aqua_raster` | `vi_modis_{terra\|aqua}_YYYYMMDD.tif` (bands: evi×100, doy) |
 | VIIRS VI COGs | `vi_viirs_raster` | `vi_viirs_{snpp\|noaa20}_YYYYMMDD.tif` |
-| VI parquet | `vi_modis_parquet` | `vi_modis_YYYYMMDD.parquet` (`pid`, `date`, `sensor`, `value`) |
+| VI parquet (MODIS) | `vi_modis_parquet` | `vi_modis_YYYYMMDD.parquet` (`pid`, `date`, `sensor` 1–2, `value`) |
+| VI parquet (VIIRS) | `vi_viirs_parquet` | `vi_viirs_YYYYMMDD.parquet` (`pid`, `date`, `sensor` 3–4, `value`). **W1.4 dependency:** tag may be unpublished; report means fall back to MODIS-only until it exists |
 | Fire age | `fireage` | `fireage_current.tif`, `fireage_{modis\|viirs}_YYYYMMDD.parquet` |
 | STAC | `stac`, `stac-vi`, `stac-burn`, `stac-static` | `catalog.json` + collection/item JSON |
 
@@ -123,6 +124,7 @@ Notes for report readers:
 - Tabular join key is **`pid`** (legacy `cellID` is aliased where needed).
 - Vegetation product is **EVI** (targets, paths, and report labels use `evi`).
 - EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
+- Multi-sensor EVI fusion (park maps / means): **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). Monthly and long-term means fuse per `(pid, date)` then `mean(..., na.rm = TRUE)`. If `vi_viirs_parquet` is unpublished, means fall back to MODIS Terra→Aqua only; `most_recent_evi.tif` still fuses available STAC COGs (including VIIRS rasters).
 - Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
 - Climate figures cite GSOD via emma_envdata `weather_data`.
 

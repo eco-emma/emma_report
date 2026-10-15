@@ -40,6 +40,8 @@ tar_load(most_recent_evi.tif)
 tar_load(most_recent_evi_date)
 tar_load(monthly_mean_evi.tif)
 tar_load(monthly_delta_evi.tif)
+tar_load(mean_evi.tif)
+tar_load(delta_evi.tif)
 tar_load(weather_data)
 tar_load(report_qmd_dir) # forces park qmds to run first
   
@@ -111,7 +113,7 @@ protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_are
 
 ```
 
-```{r, echo=F, warning=F,fig.cap="Median value of the spatial vegetation anomalies of the past month compared to the mean values of the same month in prior years.  High values indicate higher than normal vegetation biomass while low values represent less vegetation than typical for this region. Parks are ordered from low to high. Click on the park in the map to see more detailed information."}
+```{r, echo=F, warning=F,fig.cap="Median value of the spatial vegetation anomalies of the past month compared to the fuse-then-mean for the same calendar month (multi-sensor EVI with VIIRS→Terra→Aqua fill). High values indicate higher than normal vegetation biomass while low values represent less vegetation than typical for this region. Parks are ordered from low to high. Click on the park in the map to see more detailed information."}
 
 protected_areas_monthly_delta_evi |> 
   filter(!is.na(Q50)) |> 
@@ -182,7 +184,10 @@ weather_updated <- if (is.data.frame(weather_data) &&
 }
 dates <- bind_rows(
   data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(Description = "EVI", Date = format(most_recent_evi_date, "%Y-%b-%d")),
+  data.frame(
+    Description = "EVI (VIIRS→Terra→Aqua fill)",
+    Date = format(most_recent_evi_date, "%Y-%b-%d")
+  ),
   data.frame(Description = "Weather", Date = weather_updated)
 ) |> 
   select(Description, "Date last updated"=Date)

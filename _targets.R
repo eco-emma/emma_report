@@ -199,7 +199,8 @@ tar_terra_rast(name = monthly_delta_evi.tif,
                command = get_monthly_delta_evi.tif(most_recent_evi.tif,monthly_mean_evi.tif),
                filetype="COG"),
 
-# Long-term mean / delta (W0.2). MODIS-only interim; W4 adds VIIRS-first fuse.
+# Report-side long-term climatology: fuse-then-mean over all VI parquet dates
+# (MODIS + VIIRS when vi_viirs_parquet is published).
 tar_terra_rast(name = mean_evi.tif,
                command = get_mean_evi.tif(env_files, temp_directory),
                filetype = "COG"),

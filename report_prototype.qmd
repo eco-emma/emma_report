@@ -48,6 +48,12 @@ tar_load(inat_data)
 
 time_window_days=365
 
+# Quarto evaluates chunk option expressions (eval=has_weather) before later
+# chunks run. Default FALSE here; identify_closest_stations sets the real value.
+# Without this, park renders fail with: object 'has_weather' not found
+# (main website runs 38662391380 / 38662485960 on Addo).
+has_weather <- FALSE
+
 ```
 
 

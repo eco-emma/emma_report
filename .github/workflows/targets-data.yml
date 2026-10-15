@@ -209,17 +209,25 @@ jobs:
         # data targets, not runs-branch auth.
         # Must use bash: container default sh rejects `set -o pipefail`.
         # Push with GITHUB_TOKEN (job has contents:write). secrets.GH_PAT is for
-        # release downloads / rate limits — Adam's PAT (adammwilson) 403s on
-        # eco-emma push (main @ 2df84eee: commit ok, push denied).
+        # release downloads only — must not authenticate the push.
+        # Post-#33 (203c9960): remote URL used PUSH_TOKEN but checkout@v4
+        # http.extraheader still carried GH_PAT → push as adammwilson 403
+        # (run 38661121973; main-runs tip stayed on LFS pointers).
         continue-on-error: true
         shell: bash
         env:
-          # Explicit: do not inherit GITHUB_PAT into the push remote.
           PUSH_TOKEN: ${{ github.token }}
+          # Override job-level secrets.GH_PAT so helpers cannot reuse it.
+          GITHUB_PAT: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config --local user.name "github-actions[bot]"
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # checkout@v4 injects AUTHORIZATION via http.extraheader (checkout token
+          # = GH_PAT). That overrides URL-embedded credentials — clear it.
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git config --global --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           # Phase D0 / R4b hard gate: *-runs tip is _targets cache only.

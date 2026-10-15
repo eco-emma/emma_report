@@ -39,7 +39,7 @@ Switch Pages source to Actions (legacy **`main-runs` / `docs`** is incompatible 
 2. Confirm the **`github-pages`** environment exists (created automatically on first `deploy-pages` run, or create it under Settings → Environments).
 3. Keep custom domain **`emma.eco`** / HTTPS as today; no change to org host (**eco-emma**, not a personal pages org).
 4. No new secret is required for Pages when using `actions/deploy-pages` (`GITHUB_TOKEN` + `pages: write` / `id-token: write` on the deploy job).
-5. Repo secret **`GH_PAT`** must have `contents:write` on `eco-emma/emma_report` so thin `*-runs` uploads succeed (soft-fail today).
+5. Repo secret **`GH_PAT`** is for cross-repo envdata/piggyback downloads. Thin `*-runs` upload uses the Actions `GITHUB_TOKEN` (`contents: write` on the job).
 
 Do **not** publish the site via `main-runs` after D0 thin upload (that tip has no `docs/`).
 
@@ -69,7 +69,7 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-ru
 
 `GIT_LFS_SKIP_SMUDGE=1` is set by the script; `git-lfs` is optional. If tip objects are still LFS pointers (smudge failed), the script **aborts** (refuses to force-push pointer text as blobs). Heal with a successful `targets-data` upload of real objects, then orphan-reset that clean tip. CI restore also deletes unresolved pointer files so `tar_make` can rebuild.
 
-Runs upload is **soft-fail** (`continue-on-error: true`): data-job ✅ tracks `tar_make`, not runs-branch auth. If the summary shows `runs-upload: failed (soft)`, rotate `GH_PAT`.
+Runs upload is **soft-fail** (`continue-on-error: true`): data-job ✅ tracks `tar_make`, not runs-branch auth. If the summary shows `runs-upload: failed (soft)`, check job `permissions.contents: write` and upload logs (push uses `GITHUB_TOKEN`).
 
 # EMMA workflow overview
 
@@ -166,8 +166,8 @@ heal via `targets-data` upload first, then orphan-reset.
 
 Runs upload is **soft-fail** on all events (`continue-on-error: true`): pipeline
 ✅ tracks `tar_make`, not runs-branch auth. If the summary shows
-`runs-upload: failed (soft)`, rotate `GH_PAT` to a token with
-`contents:write` on `eco-emma/emma_report` so the thin cache can be reused.
+`runs-upload: failed (soft)`, check job `permissions.contents: write` and
+upload logs (`*-runs` push uses `GITHUB_TOKEN`, not `GH_PAT`).
 
 ## Releases
 

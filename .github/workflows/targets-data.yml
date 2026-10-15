@@ -248,6 +248,22 @@ jobs:
             exit 1
           fi
 
+          # Refuse LFS pointer text masquerading as target objects (orphan tip
+          # without smudge). Website tar_load → readRDS "unknown input format".
+          ptrs=0
+          if [ -d _targets/objects ]; then
+            while IFS= read -r -d '' f; do
+              if head -n1 "$f" 2>/dev/null | grep -qx 'version https://git-lfs.github.com/spec/v1'; then
+                echo "ERROR: LFS pointer present: $f" >&2
+                ptrs=$((ptrs + 1))
+              fi
+            done < <(find _targets/objects -type f -print0)
+          fi
+          if [ "$ptrs" -gt 0 ]; then
+            echo "ERROR: refused to upload ${ptrs} LFS pointer object(s) to *-runs" >&2
+            exit 1
+          fi
+
           if git diff --cached --quiet; then
             echo "Nothing new in thin runs cache; skipping commit"
           else

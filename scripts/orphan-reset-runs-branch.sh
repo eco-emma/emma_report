@@ -142,8 +142,8 @@ cp -a "$TMP/_targets" "$WORK/_targets"
 EOF
 
   # If objects are still LFS pointers, strip the filter attrs is not enough —
-  # the file contents are pointer text. Warn so ops know restore is cold-start
-  # until the next successful data job uploads real objects.
+  # the file contents are pointer text. Refuse to force-push that tip: CI would
+  # restore pointer bytes and tar_load → readRDS "unknown input format".
   pointer_count=0
   if [[ -d _targets/objects ]]; then
     while IFS= read -r -d '' f; do
@@ -153,9 +153,11 @@ EOF
     done < <(find _targets/objects -type f -print0 2>/dev/null || true)
   fi
   if [[ "$pointer_count" -gt 0 ]]; then
-    echo "WARNING: $pointer_count _targets/objects file(s) are still Git LFS pointers."
-    echo "  Tip will push (no LFS upload), but CI restore will cold-start until a"
-    echo "  data job uploads real target objects as normal git blobs."
+    echo "ERROR: $pointer_count _targets/objects file(s) are still Git LFS pointers." >&2
+    echo "  Refusing to orphan-reset a tip that would ship pointer text as blobs." >&2
+    echo "  Do not re-orphan yet. Run targets-data (bash upload) so *-runs gets" >&2
+    echo "  real objects as normal git blobs, then orphan-reset that clean tip." >&2
+    exit 1
   fi
 
   git add -f .gitattributes _targets

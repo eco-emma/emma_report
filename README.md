@@ -67,7 +67,7 @@ CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale targets-runs
 CONFIRM=yes ./scripts/orphan-reset-runs-branch.sh --delete-stale 2025_website-runs
 ```
 
-`GIT_LFS_SKIP_SMUDGE=1` is set by the script; `git-lfs` is optional. If tip objects are still LFS pointers (smudge failed), the force-push still succeeds and the next data job cold-starts then uploads real objects as git blobs.
+`GIT_LFS_SKIP_SMUDGE=1` is set by the script; `git-lfs` is optional. If tip objects are still LFS pointers (smudge failed), the script **aborts** (refuses to force-push pointer text as blobs). Heal with a successful `targets-data` upload of real objects, then orphan-reset that clean tip. CI restore also deletes unresolved pointer files so `tar_make` can rebuild.
 
 Runs upload is **soft-fail** (`continue-on-error: true`): data-job ✅ tracks `tar_make`, not runs-branch auth. If the summary shows `runs-upload: failed (soft)`, rotate `GH_PAT`.
 

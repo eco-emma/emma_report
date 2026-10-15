@@ -96,6 +96,7 @@ jobs:
 
       - name: Restore targets store from runs cache
         if: steps.runs-cache.outputs.found == 'true'
+        shell: bash
         run: |
           # Best-effort only for pre-orphan tips that still had LFS pointers.
           git -C .runs-cache lfs checkout 2>/dev/null || true
@@ -103,6 +104,19 @@ jobs:
             rm -rf _targets
             cp -a .runs-cache/_targets .
             echo "Restored _targets from ${{ steps.runs-cache.outputs.ref }}"
+            # Unresolved LFS pointers read as RDS → "unknown input format"
+            # (Phase E Addo park report: tar_load(stations)). Drop them so
+            # tar_make rebuilds real objects before Quarto.
+            n=0
+            if [ -d _targets/objects ]; then
+              while IFS= read -r -d '' f; do
+                if head -n1 "$f" 2>/dev/null | grep -qx 'version https://git-lfs.github.com/spec/v1'; then
+                  rm -f "$f"
+                  n=$((n + 1))
+                fi
+              done < <(find _targets/objects -type f -print0)
+            fi
+            echo "Removed ${n} unresolved LFS pointer object(s) for rebuild"
           else
             echo "No _targets/ in runs cache; cold start"
           fi

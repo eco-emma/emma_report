@@ -1,6 +1,5 @@
 name|type|parent|branches|progress
-report_location|stem|report_location|0|dispatched
-report_location|stem|report_location|0|completed
+report_location|stem|report_location|0|skipped
 env_files|stem|env_files|0|skipped
 remnants|stem|remnants|0|skipped
 inat_data|stem|inat_data|0|skipped

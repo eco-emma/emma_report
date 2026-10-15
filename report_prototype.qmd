@@ -24,6 +24,11 @@ library(mapview)
 library(leafem)
 library(SPEI)
 
+# Quarto/knitr may evaluate chunk option expressions (eval=has_weather) while
+# scanning the project, before load_targets runs. Seed FALSE here so that scan
+# does not error; load_targets overwrites with the real value from data.
+has_weather <- FALSE
+
 ```
 
 ```{r load_targets, echo=F, message=FALSE}
@@ -45,35 +50,31 @@ tar_load(weather_data)
 tar_load(stations)
 tar_load(inat_data)
 
-# Must exist before any chunk option `eval=has_weather` / `eval=!has_weather`
-# is evaluated (Quarto/knitr resolve those options before later chunks run).
+# Real weather gate (do not overwrite with FALSE after this — that was the
+# #39/#40 merge bug that skipped station chunks and left focal_stations_sf unset).
 # Empty weather.parquet is allowed by the envdata contract; skip climate work.
 has_weather <- is.data.frame(weather_data) &&
   nrow(weather_data) >= 1L &&
   inherits(stations, "sf") &&
   nrow(stations) >= 1L
+
+# Always seed empties so later map chunks can probe nrow() safely.
+focal_weather <- tibble::tibble()
+closest_stations <- character(0)
+focal_stations_sf <- if (inherits(stations, "sf")) {
+  stations[FALSE, , drop = FALSE]
+} else {
+  sf::st_sf(
+    STNID = character(),
+    NAME = character(),
+    geometry = sf::st_sfc(crs = 4326)
+  )
+}
 if (!has_weather) {
   message("No weather/station rows; skipping climate chunks for this park")
-  focal_weather <- tibble::tibble()
-  closest_stations <- character(0)
-  focal_stations_sf <- if (inherits(stations, "sf")) {
-    stations[FALSE, , drop = FALSE]
-  } else {
-    sf::st_sf(
-      STNID = character(),
-      NAME = character(),
-      geometry = sf::st_sfc(crs = 4326)
-    )
-  }
 }
 
 time_window_days=365
-
-# Quarto evaluates chunk option expressions (eval=has_weather) before later
-# chunks run. Default FALSE here; identify_closest_stations sets the real value.
-# Without this, park renders fail with: object 'has_weather' not found
-# (main website runs 38662391380 / 38662485960 on Addo).
-has_weather <- FALSE
 
 ```
 
@@ -295,8 +296,13 @@ n_stations=3 # number of stations to show
     cent <- suppressWarnings( focal_park %>%
                                 st_union()%>%
                                 st_centroid())
-    # stations.gpkg is WGS84; park polygons may be projected — align before distance.
-    stations_aligned <- sf::st_transform(stations, sf::st_crs(cent))
+    # stations.gpkg is WGS84; park polygons may be projected — force a shared CRS.
+    shared_crs <- sf::st_crs(cent)
+    if (is.na(shared_crs)) {
+      shared_crs <- sf::st_crs(4326)
+    }
+    cent <- sf::st_transform(cent, shared_crs)
+    stations_aligned <- sf::st_transform(stations, shared_crs)
     
     closest_stations <- 
       data.frame(station = stations_aligned$STNID,

@@ -45,6 +45,27 @@ tar_load(weather_data)
 tar_load(stations)
 tar_load(inat_data)
 
+# Must exist before any chunk option `eval=has_weather` / `eval=!has_weather`
+# is evaluated (Quarto/knitr resolve those options before later chunks run).
+# Empty weather.parquet is allowed by the envdata contract; skip climate work.
+has_weather <- is.data.frame(weather_data) &&
+  nrow(weather_data) >= 1L &&
+  inherits(stations, "sf") &&
+  nrow(stations) >= 1L
+if (!has_weather) {
+  message("No weather/station rows; skipping climate chunks for this park")
+  focal_weather <- tibble::tibble()
+  closest_stations <- character(0)
+  focal_stations_sf <- if (inherits(stations, "sf")) {
+    stations[FALSE, , drop = FALSE]
+  } else {
+    sf::st_sf(
+      STNID = character(),
+      NAME = character(),
+      geometry = sf::st_sfc(crs = 4326)
+    )
+  }
+}
 
 time_window_days=365
 
@@ -259,20 +280,22 @@ bbox <- st_bbox(focal_wgs) %>%
 
 ```
 
-```{r identify_closest_stations, echo = FALSE, warning = FALSE, message = FALSE}
+```{r identify_closest_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
 
-# Process the station and weather data
+# Process the station and weather data (skipped when weather.parquet is empty).
 n_stations=3 # number of stations to show
   # Get data for closest weather stations
   
     cent <- suppressWarnings( focal_park %>%
                                 st_union()%>%
                                 st_centroid())
+    # stations.gpkg is WGS84; park polygons may be projected — align before distance.
+    stations_aligned <- sf::st_transform(stations, sf::st_crs(cent))
     
     closest_stations <- 
-      data.frame(station = stations$STNID,
-                 name = stations$NAME,
-               distance = as.numeric(st_distance(cent,stations)))
+      data.frame(station = stations_aligned$STNID,
+                 name = stations_aligned$NAME,
+               distance = as.numeric(st_distance(cent, stations_aligned)))
     
     closest_stations <- closest_stations[order(closest_stations$distance),]
     
@@ -309,10 +332,11 @@ n_stations=3 # number of stations to show
       tibble::tibble()
     }
 
-  # Empty weather.parquet (allowed) or no nearby stations — skip climate chunks.
+  # No nearby-station rows after filter — skip remaining climate chunks.
   has_weather <- is.data.frame(focal_weather) && nrow(focal_weather) >= 1L
   if (!has_weather) {
-    message("No weather data loaded; skipping climate figures for this park")
+    message("No weather data for nearby stations; skipping climate figures for this park")
+    focal_stations_sf <- stations[FALSE, , drop = FALSE]
   }
   
 ```
@@ -489,7 +513,7 @@ mutate(date_time = paste(year,month,day,sep = "-"))%>%
 
 ```
 
-```{r generate_sf_of_stations, echo = FALSE, warning = FALSE, message = FALSE}
+```{r generate_sf_of_stations, echo = FALSE, warning = FALSE, message = FALSE, eval=has_weather}
   
   
 #Generate sf of station points
@@ -601,12 +625,27 @@ park_map <- park_map %>%
     stroke = FALSE,
     label = fires_wgs$Years,
     group = "Fires"
-  ) %>%
-  addMarkers(
-    data = focal_stations_sf,
-    label = focal_stations_sf$station_name,
-    group = "Stations"
-  ) %>%
+  )
+
+# Empty/partial weather: skip station markers (same failure mode as empty iNat).
+has_focal_stations <- inherits(focal_stations_sf, "sf") && nrow(focal_stations_sf) >= 1L
+if (isTRUE(has_focal_stations)) {
+  station_labels <- if ("station_name" %in% names(focal_stations_sf)) {
+    focal_stations_sf$station_name
+  } else if ("NAME" %in% names(focal_stations_sf)) {
+    focal_stations_sf$NAME
+  } else {
+    NULL
+  }
+  park_map <- park_map %>%
+    addMarkers(
+      data = focal_stations_sf,
+      label = station_labels,
+      group = "Stations"
+    )
+}
+
+park_map <- park_map %>%
   hideGroup("Stations") %>%
   hideGroup("EVI") %>%
   hideGroup("delta EVI<br/>(long-term)")

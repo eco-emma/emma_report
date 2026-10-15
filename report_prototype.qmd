@@ -715,20 +715,44 @@ Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the 
                      touches = TRUE) %>%
     dplyr::select(cell) -> focal_cells
 
-  # subset fire data
+  # subset fire data — keep only reshape columns. fireage parquet also carries
+  # sensor / fire_source / etc.; pivoting those with date cols fails
+  # (pivot_longer can't combine integer + character), as on Namaqua.
 
   focal_fires <-
     park_fire_history %>%
-    filter(cellID %in% focal_cells$cell)
+    dplyr::filter(.data$cellID %in% focal_cells$cell) %>%
+    dplyr::select(dplyr::any_of(c("cellID", "date", "days_since_fire"))) %>%
+    # Multiple sensors/sources can share cellID+date; keep the youngest age.
+    dplyr::group_by(.data$cellID, .data$date) %>%
+    dplyr::summarise(
+      days_since_fire = suppressWarnings(min(.data$days_since_fire, na.rm = TRUE)),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      days_since_fire = dplyr::if_else(
+        is.infinite(.data$days_since_fire),
+        NA_real_,
+        .data$days_since_fire
+      )
+    )
   
   
   # if empty, fill in NAs
   
     if(nrow(focal_fires) == 0){
       
-      focal_fires <- expand.grid(cellID = focal_cells$cell,
-                                 date = unique(park_fire_history$date),
-                                 days_since_fire = NA)  
+      fire_dates <- unique(park_fire_history$date)
+      if (length(fire_dates) < 1L) {
+        fire_dates <- as.Date(character())
+      }
+      focal_fires <- expand.grid(
+        cellID = focal_cells$cell,
+        date = fire_dates,
+        days_since_fire = NA_real_,
+        KEEP.OUT.ATTRS = FALSE,
+        stringsAsFactors = FALSE
+      )
       
       
     }
@@ -737,13 +761,17 @@ Figure 1. Leaflet map showing delta EVI, current EVI, number of years since the 
   # dealing with missing cells/ages
   
     focal_fires %>%
-      pivot_wider(names_from = date,
-                  values_from = days_since_fire) %>%
-      full_join(y = focal_cells,
-                by = c("cellID"="cell")) %>%
-      pivot_longer(cols = !1, # make sure this ncol is pointing to the correct thing
-                   names_to = "date",
-                   values_to = "days_since_fire") %>%
+      tidyr::pivot_wider(
+        id_cols = "cellID",
+        names_from = "date",
+        values_from = "days_since_fire"
+      ) %>%
+      dplyr::full_join(y = focal_cells, by = c("cellID" = "cell")) %>%
+      tidyr::pivot_longer(
+        cols = -"cellID",
+        names_to = "date",
+        values_to = "days_since_fire"
+      ) %>%
                 mutate(cellID = as.factor(cellID),
                        years_since_fire = days_since_fire/365.25,
                        date =as.numeric(date))%>%

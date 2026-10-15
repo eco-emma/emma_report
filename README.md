@@ -39,7 +39,7 @@ Switch Pages source to Actions (legacy **`main-runs` / `docs`** is incompatible 
 2. Confirm the **`github-pages`** environment exists (created automatically on first `deploy-pages` run, or create it under Settings → Environments).
 3. Keep custom domain **`emma.eco`** / HTTPS as today; no change to org host (**eco-emma**, not a personal pages org).
 4. No new secret is required for Pages when using `actions/deploy-pages` (`GITHUB_TOKEN` + `pages: write` / `id-token: write` on the deploy job).
-5. Repo secret **`GH_PAT`** must have `contents:write` on `eco-emma/emma_report` so thin `*-runs` uploads succeed (soft-fail today).
+5. Repo secret **`GH_PAT`** is for GitHub API / release downloads (rate limits). Thin `*-runs` upload pushes with **`GITHUB_TOKEN`** (`contents: write` on the data job) — a personal PAT without org write will 403 (soft-fail).
 
 Do **not** publish the site via `main-runs` after D0 thin upload (that tip has no `docs/`).
 

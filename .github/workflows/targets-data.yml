@@ -206,18 +206,21 @@ jobs:
       - name: Upload latest run
         id: upload-runs
         # Pipeline success is the job gate. Soft-fail so schedule/push ✅ tracks
-        # data targets, not runs-branch auth. Secret GH_PAT needs contents:write.
-        # Must use bash: container default sh rejects `set -o pipefail` and the
-        # step exits before any thin *-runs push (Phase E website then loads
-        # stale LFS pointer objects → tar_load readRDS "unknown input format").
+        # data targets, not runs-branch auth.
+        # Must use bash: container default sh rejects `set -o pipefail`.
+        # Push with GITHUB_TOKEN (job has contents:write). secrets.GH_PAT is for
+        # release downloads / rate limits — Adam's PAT (adammwilson) 403s on
+        # eco-emma push (main @ 2df84eee: commit ok, push denied).
         continue-on-error: true
         shell: bash
+        env:
+          # Explicit: do not inherit GITHUB_PAT into the push remote.
+          PUSH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git config --local user.name "GitHub Actions"
-          git config --local user.email "actions@github.com"
-          # Force PAT credentials (checkout/.git may still be github-actions[bot]).
-          git remote set-url origin "https://x-access-token:${GITHUB_PAT}@github.com/${GITHUB_REPOSITORY}.git"
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
           # Phase D0 / R4b hard gate: *-runs tip is _targets cache only.
           # Never force-add Quarto / website outputs (docs, reports, .quarto, …).
@@ -282,7 +285,7 @@ jobs:
             elif [ "${{ steps.upload-runs.outcome }}" = "skipped" ]; then
               echo "runs-upload: skipped"
             else
-              echo "runs-upload: failed (soft) — pipeline still green; check GH_PAT write + upload shell logs"
+              echo "runs-upload: failed (soft) — pipeline still green; check push auth (GITHUB_TOKEN / branch rules)"
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
 

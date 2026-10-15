@@ -169,7 +169,7 @@ jobs:
           if (!ci_light) {
             message("Phase E website job: tar_make park deps then website")
             targets::tar_make(
-              names = any_of(
+              names = any_of(c(
                 "stations",
                 "weather_data",
                 "inat_data",
@@ -183,7 +183,7 @@ jobs:
                 "monthly_delta_evi.tif",
                 "report_qmd_dir",
                 "report_location"
-              )
+              ))
             )
           } else {
             message("Phase E website job: light mode — skip park deps, stub website")

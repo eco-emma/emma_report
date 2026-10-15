@@ -130,6 +130,9 @@ jobs:
             echo "No _targets/ in runs cache; cold start"
           fi
 
+      - name: Unit test EVI sensor fusion (W4.0)
+        run: Rscript scripts/test_fuse_evi_sensors.R
+
       - name: Run targets pt 1
         run: |
           Sys.setenv(HOME = "/home/rstudio")
@@ -175,7 +178,16 @@ jobs:
             if (length(outdated)) paste0(": ", paste(outdated, collapse = ", ")) else ""
           )
           # Quarto / website is isolated in targets-website.yml.
-          targets::tar_make(names = !any_of("website"))
+          # PR light CI skips all-history mean_evi/delta_evi (hundreds of
+          # parquet downloads); full builds on push/schedule still produce them.
+          ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
+          if (ci_light) {
+            targets::tar_make(
+              names = !any_of(c("website", "mean_evi.tif", "delta_evi.tif"))
+            )
+          } else {
+            targets::tar_make(names = !any_of("website"))
+          }
         shell: Rscript {0}
 
       - name: Summarize data job

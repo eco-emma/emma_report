@@ -181,6 +181,8 @@ jobs:
                 "most_recent_evi_date",
                 "monthly_mean_evi.tif",
                 "monthly_delta_evi.tif",
+                "mean_evi.tif",
+                "delta_evi.tif",
                 "report_qmd_dir",
                 "report_location"
               ))

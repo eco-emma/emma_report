@@ -24,6 +24,7 @@ get_env_files <- function(repo = ENVDATA_REPO,
       ENVDATA_RELEASE_TAGS$vi_modis_aqua,
       ENVDATA_RELEASE_TAGS$vi_modis_parquet,
       ENVDATA_RELEASE_TAGS$vi_viirs,
+      ENVDATA_RELEASE_TAGS$vi_viirs_parquet,
       ENVDATA_RELEASE_TAGS$fireage,
       ENVDATA_RELEASE_TAGS$stac_vi,
       ENVDATA_RELEASE_TAGS$stac_burn
@@ -126,69 +127,128 @@ generate_fires_vector <- function(years_since_fire.tif) {
   fires_wgs
 }
 
-#' Most recent MODIS Terra VI COG metadata (via STAC)
+#' Most recent multi-sensor VI COG metadata (via STAC)
 #'
-#' Returns a one-row tibble with file_name, tag, href, file_date for
-#' compatibility with existing targets.
+#' Returns one row per available sensor asset on the latest STAC item, ordered
+#' by fuse priority (NOAA-20 → S-NPP → Terra → Aqua). Columns: sensor, file_name,
+#' tag, href, file_date, asset_key.
 get_most_recent_evi_file <- function(env_files = NULL) {
   item <- get_latest_vi_stac_item()
   assets <- item$assets
-  if (is.null(assets$modis_terra_vi)) {
-    stop("Latest VI STAC item lacks modis_terra_vi asset")
+  rows <- list()
+  for (tok in EVI_FUSE_PRIORITY) {
+    asset_key <- EVI_STAC_ASSET_KEYS[[tok]]
+    asset <- assets[[asset_key]]
+    if (is.null(asset) || is.null(asset$href)) {
+      next
+    }
+    href <- asset$href
+    parsed <- tryCatch(
+      parse_envdata_release_href(href),
+      error = function(e) {
+        list(
+          tag = unname(EVI_SENSOR_RELEASE_TAGS[[tok]]),
+          file = basename(href)
+        )
+      }
+    )
+    rows[[length(rows) + 1L]] <- tibble::tibble(
+      sensor = tok,
+      sensor_id = unname(EVI_SENSOR_IDS[[tok]]),
+      asset_key = asset_key,
+      file_name = parsed$file,
+      tag = parsed$tag %||% unname(EVI_SENSOR_RELEASE_TAGS[[tok]]),
+      href = href,
+      file_date = parse_envdata_yyyymmdd(parsed$file)
+    )
   }
-  href <- assets$modis_terra_vi$href
-  file_name <- basename(href)
-  tibble::tibble(
-    file_name = file_name,
-    tag = ENVDATA_RELEASE_TAGS$vi_modis_terra,
-    href = href,
-    file_date = parse_envdata_yyyymmdd(file_name)
-  )
+  if (!length(rows)) {
+    stop(
+      "Latest VI STAC item has no sensor COG assets among: ",
+      paste(EVI_STAC_ASSET_KEYS, collapse = ", ")
+    )
+  }
+  dplyr::bind_rows(rows)
 }
 
-#' Download and scale the most recent Terra EVI COG to approximate [-1, 1] units
-#' (integer storage on release assets is ×100).
-get_most_recent_evi.tif <- function(most_recent_evi_file, temp_directory) {
-  path <- download_envdata_asset(
-    tag = most_recent_evi_file$tag[[1]],
-    file = most_recent_evi_file$file_name[[1]],
-    dest_dir = temp_directory,
-    overwrite = TRUE
-  )
+#' Read, scale, and clamp one EVI COG band to approximately [-1, 1]
+#'
+#' Integer storage on release assets is ×100. Zeros are masked to NA.
+scale_evi_cog_band <- function(path) {
   r <- terra::rast(path)
-  # Band 1 = evi (×100 integer); band 2 = doy
   evi <- if (terra::nlyr(r) >= 1L) r[[1]] else r
   evi <- scale_evi_integer(evi)
   evi[evi > 1] <- 1
   evi[evi < -1] <- -1
-  # Mask zeros / nodata placeholders
   evi <- terra::mask(evi, mask = evi, maskvalue = 0)
   names(evi) <- "evi"
   evi
 }
 
+#' Download and fuse multi-sensor EVI COGs for the latest STAC composite
+#'
+#' Priority fill: VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua. Remaining NA
+#' means all available sensors were missing after QA (water / cloud / etc.).
+get_most_recent_evi.tif <- function(most_recent_evi_file, temp_directory) {
+  if (!nrow(most_recent_evi_file)) {
+    stop("most_recent_evi_file is empty")
+  }
+  layers <- list()
+  for (i in seq_len(nrow(most_recent_evi_file))) {
+    row <- most_recent_evi_file[i, , drop = FALSE]
+    path <- download_envdata_asset(
+      tag = row$tag[[1]],
+      file = row$file_name[[1]],
+      dest_dir = temp_directory,
+      overwrite = TRUE
+    )
+    tok <- row$sensor[[1]]
+    layers[[tok]] <- scale_evi_cog_band(path)
+  }
+  fuse_evi_rasters(layers, priority = EVI_FUSE_PRIORITY)
+}
+
 get_most_recent_evi_date <- function(most_recent_evi_file) {
-  if ("file_date" %in% names(most_recent_evi_file) &&
-      !is.na(most_recent_evi_file$file_date[[1]])) {
-    return(most_recent_evi_file$file_date[[1]])
+  if ("file_date" %in% names(most_recent_evi_file)) {
+    dates <- most_recent_evi_file$file_date
+    dates <- dates[!is.na(dates)]
+    if (length(dates)) {
+      return(dates[[1L]])
+    }
   }
   parse_envdata_yyyymmdd(most_recent_evi_file$file_name[[1]])
 }
 
+#' Assert two EVI SpatRasters share CRS and extent, then subtract
+evi_delta_rasters <- function(current, mean_rast, label = "VI") {
+  delta <- current - mean_rast
+  if (terra::crs(current, proj = TRUE) != terra::crs(mean_rast, proj = TRUE)) {
+    stop(label, " CRS mismatch")
+  }
+  if (terra::ext(current) != terra::ext(mean_rast)) {
+    stop(label, " extent mismatch")
+  }
+  if (terra::crs(delta, proj = TRUE) != terra::crs(current, proj = TRUE)) {
+    terra::crs(delta) <- terra::crs(current)
+  }
+  names(delta) <- "evi"
+  delta
+}
+
 #' Monthly mean EVI minus current observation (same units)
 get_monthly_delta_evi.tif <- function(most_recent_evi.tif, monthly_mean_evi.tif) {
-  monthly_delta_evi.tif <- most_recent_evi.tif - monthly_mean_evi.tif
+  evi_delta_rasters(
+    most_recent_evi.tif,
+    monthly_mean_evi.tif,
+    label = "Monthly VI"
+  )
+}
 
-  if (terra::crs(most_recent_evi.tif, proj = TRUE) !=
-      terra::crs(monthly_mean_evi.tif, proj = TRUE)) {
-    stop("VI CRS mismatch")
-  }
-  if (terra::ext(most_recent_evi.tif) != terra::ext(monthly_mean_evi.tif)) {
-    stop("VI extent mismatch")
-  }
-  if (terra::crs(monthly_delta_evi.tif, proj = TRUE) !=
-      terra::crs(most_recent_evi.tif, proj = TRUE)) {
-    terra::crs(monthly_delta_evi.tif) <- terra::crs(most_recent_evi.tif)
-  }
-  monthly_delta_evi.tif
+#' Long-term mean EVI minus current observation (same units)
+get_delta_evi.tif <- function(most_recent_evi.tif, mean_evi.tif) {
+  evi_delta_rasters(
+    most_recent_evi.tif,
+    mean_evi.tif,
+    label = "Long-term VI"
+  )
 }

@@ -86,13 +86,29 @@ evi_mean_from_parquet_files <- function(vi_files,
     stop("No VI parquet assets to aggregate")
   }
 
-  for (i in seq_len(nrow(vi_files))) {
+  n_files <- nrow(vi_files)
+  need <- character(0)
+  for (i in seq_len(n_files)) {
+    dest <- file.path(temp_directory, vi_files$file_name[[i]])
+    if (!file.exists(dest) || file.info(dest)$size <= 0) {
+      need <- c(need, vi_files$file_name[[i]])
+    }
+  }
+  message(
+    "VI parquet downloads: ", n_files - length(need), " cached, ",
+    length(need), " to fetch"
+  )
+  for (i in seq_len(n_files)) {
     download_envdata_asset(
       tag = vi_files$tag[[i]],
       file = vi_files$file_name[[i]],
       dest_dir = temp_directory,
-      overwrite = FALSE
+      overwrite = FALSE,
+      verbose = FALSE
     )
+    if (i == 1L || i == n_files || i %% 50L == 0L) {
+      message("Downloaded ", i, "/", n_files, " VI parquet assets")
+    }
   }
 
   paths <- file.path(temp_directory, vi_files$file_name)
@@ -112,7 +128,11 @@ evi_mean_from_parquet_files <- function(vi_files,
   count_vec <- numeric(0)
 
   dates <- sort(unique(vi_files$file_date))
-  for (d in dates) {
+  n_dates <- length(dates)
+  message("Fuse-then-mean over ", n_dates, " composite date(s)")
+  t0 <- proc.time()[["elapsed"]]
+  for (di in seq_along(dates)) {
+    d <- dates[[di]]
     day_files <- vi_files$path[vi_files$file_date == d]
     raw <- arrow::open_dataset(day_files) |>
       dplyr::select(dplyr::any_of(c("pid", "date", "sensor", "value"))) |>
@@ -148,6 +168,14 @@ evi_mean_from_parquet_files <- function(vi_files,
       count_vec[k] <- count_vec[k] + 1
     }
     rm(raw, fused)
+    if (di == 1L || di == n_dates || di %% 25L == 0L) {
+      elapsed <- proc.time()[["elapsed"]] - t0
+      message(
+        "Fused ", di, "/", n_dates, " dates (",
+        round(elapsed, 1), "s elapsed, ",
+        length(sum_vec), " pids)"
+      )
+    }
   }
 
   if (!length(sum_vec)) {

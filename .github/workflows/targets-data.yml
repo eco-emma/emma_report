@@ -27,7 +27,10 @@ jobs:
   targets-data:
     runs-on: ubuntu-latest
     # Data downloads + targets store; free ubuntu-latest only.
-    timeout-minutes: 90
+    # All-history mean_evi.tif fuse-then-mean downloads ~600–900 VI parquets
+    # (MODIS + VIIRS). 90m cancelled mid-build (runs 38992962943 / 39008872526);
+    # allow cold-cache VIIRS-aware rebuilds to finish and upload main-runs.
+    timeout-minutes: 240
     permissions:
       contents: write
       actions: read

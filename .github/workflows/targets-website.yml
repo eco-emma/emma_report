@@ -23,7 +23,9 @@ jobs:
       github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     # Quarto park site ~32m / ~570MB; fail loud instead of hanging until runner kill.
-    timeout-minutes: 120
+    # Park-deps step may rebuild mean_evi.tif when main-runs is cold/stale after
+    # a cancelled data job — keep headroom above the prior 120m cancel.
+    timeout-minutes: 180
     permissions:
       contents: read
       actions: read

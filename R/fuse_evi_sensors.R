@@ -65,18 +65,53 @@ fuse_evi_sensor_values <- function(sensor,
 #' @param data Data frame / tibble with columns `pid`, `date`, `sensor`, `value`.
 #' @param priority Sensor ids in fill order.
 #' @return Tibble with `pid`, `date`, `value` (one fused value per group).
+#'
+#' Uses a wide coalesce (not per-group R callbacks) so all-history
+#' `mean_evi.tif` builds stay within GHA time budgets once VIIRS parquets land.
 fuse_evi_by_pid_date <- function(data, priority = c(4L, 3L, 1L, 2L)) {
   required <- c("pid", "date", "sensor", "value")
   missing <- setdiff(required, names(data))
   if (length(missing)) {
     stop("fuse_evi_by_pid_date() missing columns: ", paste(missing, collapse = ", "))
   }
-  data |>
-    dplyr::group_by(.data$pid, .data$date) |>
-    dplyr::summarise(
-      value = fuse_evi_sensor_values(.data$sensor, .data$value, priority = priority),
-      .groups = "drop"
+  priority <- as.integer(priority)
+  df <- as.data.frame(data, stringsAsFactors = FALSE)
+  df$pid <- as.integer(df$pid)
+  df$date <- as.Date(df$date)
+  df$sensor <- as.integer(df$sensor)
+  df$value <- as.numeric(df$value)
+  # Last write wins within a sensor; keep first non-NA via coalesce below.
+  df <- df[!is.na(df$pid) & !is.na(df$date) & !is.na(df$sensor), , drop = FALSE]
+  if (!nrow(df)) {
+    return(data.frame(
+      pid = integer(),
+      date = as.Date(character()),
+      value = numeric(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  # One column per sensor id present; coalesce in priority order.
+  # Avoid dplyr::group_by + per-group R callbacks (too slow for ~600 dates).
+  wide <- tidyr::pivot_wider(
+    df,
+    id_cols = c("pid", "date"),
+    names_from = "sensor",
+    names_prefix = "s",
+    values_from = "value",
+    values_fn = function(x) x[!is.na(x)][1]
+  )
+  cols <- paste0("s", priority)
+  present <- cols[cols %in% names(wide)]
+  if (!length(present)) {
+    wide$value <- NA_real_
+  } else if (length(present) == 1L) {
+    wide$value <- as.numeric(wide[[present]])
+  } else {
+    wide$value <- as.numeric(
+      do.call(dplyr::coalesce, unname(as.list(wide[present])))
     )
+  }
+  as.data.frame(wide[c("pid", "date", "value")], stringsAsFactors = FALSE)
 }
 
 #' Priority-fill a named list / SpatRaster stack of sensor EVI layers

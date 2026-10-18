@@ -129,11 +129,13 @@ focal_park=protected_areas |>
 #    park_fires_file  <- paste("https://github.com/AdamWilsonLab/emma_report/releases/download/park_data/",
 #                              paste(park_no_spaces,"fires.gpkg",sep= "_"),sep = "")
 
-# Create a truncated version of the fire maps (ranging from 1-20)
+# Truncate paint ages at 20; keep Years_true for hover labels.
 
   fires_wgs %>%
-    mutate(Years = case_when(Years > 20 ~ 20,
-                             Years <=20 ~ Years)) -> fires_wgs_truncated
+    mutate(
+      Years_true = Years,
+      Years = pmin(Years, 20)
+    ) -> fires_wgs_truncated
   
 
 
@@ -245,13 +247,14 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
 
 
 # Create continuous palettes
+  # Fire-age colors: 0 = light, 20+ = dark (same direction for raster + filled "Fires").
+  # Legend must use decreasing=TRUE with reverse=FALSE so labels match the ramp.
 
-  pal <- colorNumeric(palette = "Reds",
-                      domain = fires_wgs_truncated$Years,
-                      reverse = TRUE)
-
-  antipal <- colorNumeric(palette = "Reds",
-                          domain = fires_wgs_truncated$Years,reverse = FALSE)
+  antipal <- colorNumeric(
+    palette = "Reds",
+    domain = c(0, 20),
+    reverse = FALSE
+  )
   
   
   evi_pal <- colorNumeric(palette = c( "#FFFFCC", "#41B6C4","#0C2C84"),
@@ -273,16 +276,13 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
     na.color = "transparent"
   )
 
-  # Raster overlay uses true ages; polygon color scale stays truncated at 20.
-  ysf_vals <- terra::values(years_since_fire.tif)
-  ysf_domain <- range(ysf_vals[is.finite(ysf_vals) & ysf_vals >= 0], na.rm = TRUE)
-  if (!all(is.finite(ysf_domain))) {
-    ysf_domain <- c(0, 20)
-  }
+  # Raster paint is capped at 20 for the legend; hover labels keep true ages.
+  years_since_fire_map <- years_since_fire.tif
+  years_since_fire_map[years_since_fire_map > 20] <- 20
   years_since_fire_pal <- colorNumeric(
     palette = "Reds",
-    domain = ysf_domain,
-    reverse = TRUE,
+    domain = c(0, 20),
+    reverse = FALSE,
     na.color = "transparent"
   )
 
@@ -614,7 +614,7 @@ park_map <- leaflet(data = focal_wgs) %>%
     colors = delta_evi_pal
   ) %>%
   addRasterImage(
-    x = raster::raster(years_since_fire.tif),
+    x = raster::raster(years_since_fire_map),
     group = "Years since fire",
     colors = years_since_fire_pal,
     opacity = 0.7
@@ -639,6 +639,7 @@ if (isTRUE(has_focal_invasives)) {
     )
 }
 
+# Outlines/fills use truncated Years for color; labels use true ages (Years_true).
 park_map <- park_map %>%
   addPolygons(
     data = fires_wgs_truncated,
@@ -646,7 +647,7 @@ park_map <- park_map %>%
     fill = TRUE,
     fillOpacity = 0,
     stroke = TRUE,
-    label = paste(round(fires_wgs$Years, 1), "years since burn"),
+    label = ~paste(round(Years_true, 1), "years since burn"),
     weight = 1,
     group = "Fire Outlines"
   ) %>%
@@ -655,7 +656,7 @@ park_map <- park_map %>%
     color = ~antipal(Years),
     fillOpacity = .75,
     stroke = FALSE,
-    label = round(fires_wgs$Years, 1),
+    label = ~round(Years_true, 1),
     group = "Fires"
   )
 
@@ -719,10 +720,11 @@ park_map %>%
   ) %>%
   addLegend_decreasing(
     position = "bottomright",
-    pal = pal,
-    values = ~fires_wgs_truncated$Years,
+    pal = years_since_fire_pal,
+    values = c(0, 20),
     title = "Years<br/>Since<br/>Fire",
-    opacity = 1
+    opacity = 1,
+    decreasing = TRUE
   ) %>%
   addLayersControl(
     baseGroups = c("NatGeo", "World Imagery"),
@@ -734,7 +736,7 @@ park_map %>%
 
 ```
 
-Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The filled fire polygon color scale is truncated at 20 years for readability; hover labels and the years-since-fire raster use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
+Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The years-since-fire raster and filled fire polygon color scales are truncated at 20 years for readability (0 light → 20+ dark); hover labels use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
 
 ## Area burned and vegetation ages
 

@@ -740,15 +740,23 @@ Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, year
 
 ```{r vegetation ages over time, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
-# Subset park_fire_history to only the focal park
+# Subset park_fire_history to the focal park by domain pid.
+  # park_fire_history$cellID is an alias for pid (see get_fire_history()).
+  # terra::extract(..., cells = TRUE) returns cell indices (1…ncell), which do
+  # not match pid — that join yields 0 rows and empty Fig. 2 site-wide.
 
-  # use the evi raster as a template to get cells in park
-
-    most_recent_evi.tif %>%
-      terra::extract(y = vect(focal_park),
-                     cells = TRUE,
-                     touches = TRUE) %>%
-    dplyr::select(cell) -> focal_cells
+  if (!exists("get_domain_raster", mode = "function")) {
+    source("R/envdata_contract.R", local = TRUE)
+  }
+  domain <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
+  pid_layer <- if ("pid" %in% names(domain)) domain[["pid"]] else domain[[1]]
+  focal_pids <- unique(stats::na.omit(
+    terra::extract(
+      x = pid_layer,
+      y = terra::vect(focal_park),
+      touches = TRUE
+    )[[2]]
+  ))
 
   # ~500 m domain cells → hectares (EPSG:9221 metres)
   cell_ha <- as.numeric(
@@ -762,7 +770,7 @@ Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, year
   # (envdata lower-bounds age at record start 2000-01-01). Do not collapse to 20.
 
   park_fire_history_focal <- park_fire_history %>%
-    dplyr::filter(.data$cellID %in% focal_cells$cell)
+    dplyr::filter(.data$cellID %in% focal_pids)
 
   if (!"last_burn_date" %in% names(park_fire_history_focal)) {
     park_fire_history_focal$last_burn_date <- NA_real_
@@ -812,7 +820,7 @@ Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, year
       fire_dates <- as.Date(character())
     }
     focal_fires <- expand.grid(
-      cellID = focal_cells$cell,
+      cellID = focal_pids,
       date = fire_dates,
       days_since_fire = NA_real_,
       last_burn_date = NA_real_,

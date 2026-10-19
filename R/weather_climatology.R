@@ -4,6 +4,9 @@
 # Alignment: prior 12-month slices, calendar-shifted onto the current
 # trailing window that ends at the latest available weather date. Not a
 # fixed Jan–Dec calendar-year / DOY axis.
+#
+# Precipitation: true in-window cumulative sum starting at 0 at the window
+# start and summing forward (not a trailing 365-day rolling sum).
 
 #' Station-mean daily series for one weather variable.
 #'
@@ -35,67 +38,33 @@ park_daily_weather <- function(focal_weather, value_col) {
     dplyr::arrange(.data$date)
 }
 
-#' Trailing 12-month cumulative sum of a daily series.
+#' In-window cumulative sum for one daily series on a fixed date grid.
 #'
-#' For each date `d`, value = sum of daily values on `[d - 364, d]` (365 days
-#' inclusive). Days with no observation contribute 0 to the sum (GSOD often
-#' omits zero-precip days). Requires at least `min_days` finite daily values
-#' in the window; otherwise the cumulative for that date is NA.
+#' Starts at 0 on the first day of `ref_dates`, then sums forward. Days with no
+#' observation contribute 0 (GSOD often omits zero-precip days). Returns NULL
+#' when fewer than `min_days` finite daily values fall in the window.
 #'
-#' @param daily tibble from [park_daily_weather()]
-#' @param min_days minimum observed days in the trailing window
-#' @return tibble with `date`, `value` (cumulative mm)
-park_daily_trailing_sum <- function(daily, min_days = 60L) {
-  empty <- tibble::tibble(
-    date = as.Date(character()),
-    value = numeric()
-  )
-  if (!is.data.frame(daily) || nrow(daily) < 1L) {
-    return(empty)
+#' @param ref_dates Date vector (window calendar)
+#' @param value_by_date named numeric vector (names = `as.character(date)`)
+#' @param min_days minimum observed days required
+#' @return tibble with `plot_date`, `value`, or NULL
+park_window_cumsum <- function(ref_dates, value_by_date, min_days = 60L) {
+  ref_dates <- as.Date(ref_dates)
+  if (!length(ref_dates)) {
+    return(NULL)
   }
-  if (!all(c("date", "value") %in% names(daily))) {
-    return(empty)
+  vals <- as.numeric(value_by_date[as.character(ref_dates)])
+  obs <- is.finite(vals)
+  if (sum(obs) < as.integer(min_days)) {
+    return(NULL)
   }
-  df <- daily
-  df$date <- as.Date(df$date)
-  df$value <- as.numeric(df$value)
-  df <- df[is.finite(df$value) & !is.na(df$date), , drop = FALSE]
-  if (!nrow(df)) {
-    return(empty)
-  }
-  df <- df[order(df$date), , drop = FALSE]
-  # Collapse duplicate dates
-  df <- df |>
-    dplyr::group_by(.data$date) |>
-    dplyr::summarise(value = sum(.data$value, na.rm = TRUE), .groups = "drop") |>
-    dplyr::arrange(.data$date)
-
-  date_min <- min(df$date)
-  date_max <- max(df$date)
-  # Full daily calendar so missing days count as 0 precip in the rolling sum
-  cal <- tibble::tibble(date = seq.Date(date_min, date_max, by = "day"))
-  cal <- dplyr::left_join(cal, df, by = "date")
-  cal$value[is.na(cal$value)] <- 0
-  # Observed-day count: original non-missing days only
-  obs <- rep(0, nrow(cal))
-  obs[cal$date %in% df$date] <- 1L
-
-  n <- nrow(cal)
-  win <- 365L
-  if (n < win) {
-    return(empty)
-  }
-  cs_val <- cumsum(cal$value)
-  cs_obs <- cumsum(obs)
-  # sum on [i-364, i] = cs[i] - cs[i-365] (with cs[0]=0)
-  idx <- seq.int(win, n)
-  prev <- idx - win
-  sum_val <- cs_val[idx] - c(0, cs_val)[prev + 1L]
-  sum_obs <- cs_obs[idx] - c(0, cs_obs)[prev + 1L]
-  ok <- sum_obs >= as.integer(min_days)
+  filled <- vals
+  filled[!obs] <- 0
+  # Explicit origin at window start (0 mm), then cumulative through each day.
+  cs <- as.numeric(cumsum(filled))
   tibble::tibble(
-    date = cal$date[idx][ok],
-    value = as.numeric(sum_val[ok])
+    plot_date = c(ref_dates[[1]], ref_dates),
+    value = c(0, cs)
   )
 }
 
@@ -122,17 +91,24 @@ shift_dates_years <- function(dates, n_years) {
 #' alignment. The current trailing window is the red line and is excluded from
 #' the historical envelope / grey lines.
 #'
+#' When `cumulative = TRUE` (precipitation), each window is converted to a true
+#' cumulative curve starting at 0 at the window start and summing forward.
+#' Median / ribbons / grey years use the same definition. When `cumulative =
+#' FALSE` (temperature), daily values are plotted as-is.
+#'
 #' Uses every prior slice that meets `min_days_per_year` back to the earliest
 #' date in `daily` (capped at 80 offsets). Returns `n_hist_years` for captions.
 #'
-#' @param daily tibble from [park_daily_weather()] (or trailing-sum series)
+#' @param daily tibble from [park_daily_weather()]
 #' @param as_of Date; window end (latest weather date)
 #' @param min_days_per_year minimum non-NA days for a historical slice to keep
+#' @param cumulative if TRUE, in-window cumulative sum from 0
 #' @return list with `years`, `envelope`, `current`, window dates, `has_data`,
 #'   `n_hist_years`, `record_start`, `record_end`
 weather_climatology_layers <- function(daily,
                                        as_of = Sys.Date(),
-                                       min_days_per_year = 60L) {
+                                       min_days_per_year = 60L,
+                                       cumulative = FALSE) {
   empty_years <- tibble::tibble(
     year_offset = integer(),
     plot_date = as.Date(character()),
@@ -163,7 +139,8 @@ weather_climatology_layers <- function(daily,
     has_data = FALSE,
     n_hist_years = 0L,
     record_start = as.Date(NA),
-    record_end = as.Date(NA)
+    record_end = as.Date(NA),
+    cumulative = isTRUE(cumulative)
   )
   if (!is.data.frame(daily) || nrow(daily) < 1L) {
     return(out)
@@ -186,14 +163,38 @@ weather_climatology_layers <- function(daily,
   ref_dates <- seq.Date(window_start, window_end, by = "day")
   value_by_date <- stats::setNames(df$value, as.character(df$date))
 
-  # Current trailing window (red)
-  cur_vals <- value_by_date[as.character(ref_dates)]
-  cur_ok <- is.finite(cur_vals)
-  if (any(cur_ok)) {
-    out$current <- tibble::tibble(
-      plot_date = ref_dates[cur_ok],
-      value = as.numeric(cur_vals[cur_ok])
+  # Pull values on `source_dates`; return rows aligned to `plot_dates`.
+  extract_window <- function(source_dates, plot_dates) {
+    source_dates <- as.Date(source_dates)
+    plot_dates <- as.Date(plot_dates)
+    if (isTRUE(cumulative)) {
+      series <- park_window_cumsum(
+        source_dates,
+        value_by_date,
+        min_days = min_days_per_year
+      )
+      if (is.null(series)) {
+        return(NULL)
+      }
+      # Same origin + daily grid, remapped onto the plot window dates.
+      series$plot_date <- c(plot_dates[[1]], plot_dates)
+      return(series)
+    }
+    vals <- as.numeric(value_by_date[as.character(source_dates)])
+    ok <- is.finite(vals)
+    if (sum(ok) < as.integer(min_days_per_year)) {
+      return(NULL)
+    }
+    tibble::tibble(
+      plot_date = plot_dates[ok],
+      value = as.numeric(vals[ok])
     )
+  }
+
+  # Current trailing window (red)
+  cur <- extract_window(ref_dates, ref_dates)
+  if (!is.null(cur)) {
+    out$current <- cur
   }
 
   # Historical prior 12-month slices → aligned onto ref_dates
@@ -216,15 +217,14 @@ weather_climatology_layers <- function(daily,
   if (max_offset >= 1L) {
     for (i in seq_len(max_offset)) {
       hist_dates <- shift_dates_years(ref_dates, i)
-      vals <- value_by_date[as.character(hist_dates)]
-      ok <- is.finite(vals)
-      if (sum(ok) < as.integer(min_days_per_year)) {
+      series <- extract_window(hist_dates, ref_dates)
+      if (is.null(series)) {
         next
       }
       hist_rows[[length(hist_rows) + 1L]] <- tibble::tibble(
         year_offset = as.integer(i),
-        plot_date = ref_dates[ok],
-        value = as.numeric(vals[ok])
+        plot_date = series$plot_date,
+        value = series$value
       )
     }
   }

@@ -67,7 +67,7 @@ park_map_tooltip_format_js|function|4841491021ba0840
 summarize_predictions|function|0c38569aaeb9255b
 shift_dates_years|function|37f921d8c78522d0
 find_long_records|function|7c0ea73cbbf23cfa
-.Random.seed|object|954732289f0e146b
+.Random.seed|object|7fc12f9a5ed2f9cc
 park_daily_weather|function|b5ea700e843646af
 invasive_watch_list|function|9c1997124cbc6b46
 VELD_AGE_GROUP|object|c4d9b1f629cb7669
@@ -75,17 +75,19 @@ EVI_DELTA_LONGTERM_GROUP|object|3d8b007729b877c3
 read_json_url|function|4e7d710d28ced2da
 ci_light|object|cc6a331fb3c0077c
 format_invasive_watch_md|function|200b2d3ca969b3cd
+empty_park_monthly_delta_evi_series|function|731f7b5081848f2d
 park_window_cumsum|function|37ec7896701ccf3d
 sleep_time|object|d516855f98da7f3d
 .park_map_js_str|function|3333310d6dec4184
 EVI_LAYER_CONTROL_HEADER|object|961b1548e92182f9
 contract|object|9c1ae2d866a63575
 update_station_list_nonint|function|5946407e9eb94878
+STRESS_SERIES_MONTHS|object|e34a4d8ce615fd55
 park_domain_pids|function|7f17c566b1f9995b
 generate_park_qmds|function|94ad60376f085694
+park_stress_delta_series|function|9e0fbfeddc070581
 clean_up|function|d1d5cd6b8b61e2c8
 other|object|d71f1ea622a6e883
-STRESS_SERIES_MONTHS|object|e34a4d8ce615fd55
 tidy_static_data|function|6555f1f56ccaa127
 list_release_assets|function|4c10db3af8935a45
 envdata_release_url|function|647d04630683dbd9
@@ -136,33 +138,35 @@ get_monthly_mean_evi.tif|function|d8986396a6420bb7
 get_mean_evi.tif|function|063b5e646ccfcbac
 get_model_data|function|a2246250013a60e3
 write_remnants_from_domain|function|6df8930b0cda4767
+build_park_monthly_delta_evi_series|function|891976162fb9b8b2
 get_domain_polygon|function|3624648588f04e5b
 sync_envdata|function|b79e5dd87b21d641
 compute_data_freshness|function|fd5785303f129c58
 get_remnants_raster|function|2b82c046dd1c327d
 generate_fires_vector|function|ef5265cd0bbf938f
-env_files|stem|e031f0150ab263b0|c5e40154e65ca64c|6366dea5e670171a|-616626180||t20745.7715822471s|s34319b|34319|rds|local|vector|||17.47||
-protected_areas|stem|cb62cd90325e1c0c|5b0e63caedc2b9f2|28dc3aa9e9a0a88e|1762567022||t20745.7715837981s|s680076b|680076|format_custom&read=ewogICAgaWYgKCJFU1JJIFNoYXBlZmlsZSIgPT0gIkVTUkkgU2hhcGVmaWxlIikgewogICAgICAgIHRlcnJhOjp2ZWN0KHBhc3RlMCgiL3ZzaXppcC97IiwgcGF0aCwgIn0iKSkKICAgIH0KICAgIGVsc2UgewogICAgICAgIHRlcnJhOjp2ZWN0KHBhdGgpCiAgICB9Cn0&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVWZWN0b3IsIGMobGlzdCh4ID0gb2JqZWN0LCBmaWxlbmFtZSA9IGlmZWxzZSgiRVNSSSBTaGFwZWZpbGUiID09IAogICAgICAgICJFU1JJIFNoYXBlZmlsZSIsIHllcyA9IHBhc3RlMChwYXRoLCAiLnNoeiIpLCBubyA9IHBhdGgpLCAKICAgICAgICBmaWxldHlwZSA9ICJFU1JJIFNoYXBlZmlsZSIsIG92ZXJ3cml0ZSA9IFRSVUUsIG9wdGlvbnMgPSAiRU5DT0RJTkc9VVRGLTgiKSwgCiAgICAgICAgbGlzdCgpKSkKICAgIGlmICgiRVNSSSBTaGFwZWZpbGUiID09ICJFU1JJIFNoYXBlZmlsZSIpIHsKICAgICAgICBmaWxlLnJlbmFtZShwYXN0ZTAocGF0aCwgIi5zaHoiKSwgcGF0aCkKICAgIH0KfQ&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||1.291||
-spatial_outputs|stem|096d6f9bbc751e31|5a005fea9c7c2c44|0c4cced29dd178b3|-167883086||t20745.7715843884s|s29071445b|29071445|rds|local|vector|||1.999||
-model_results|stem|e294fb54cf70bfce|220c4bdcb3cdc3c4|0c4cced29dd178b3|-1523611067||t20745.7715824092s|s5585416b|5585416|rds|local|vector|||1.158||
-report_location|stem|e426cdc926cae1dd|cca3736b930ad1b4|2c530c1562a7fbd1|-708004005|report_prototype.qmd|t20745.7715387739s|s49883b|49883|file|local|vector|||1.868||
-data_freshness|stem|6018daa2b3fc5012|99ba4379678d633e|192a4c7b568a09b0|-1613002238||t20745.7715821767s|s479b|479|rds|local|vector|||3.208||
-weather_data|stem|0c9d6f145d29d1a6|84d278b10b5c4c04|3f72851a4dfb2d6d|-1316706071||t20745.7715844115s|s150499b|150499|rds|local|vector|||0.327||
-stations|stem|b13d2ca6e92fdacd|45468f6daedb8f74|f4c40ca39589447e|-1924759837||t20745.7715844s|s2589b|2589|rds|local|vector|||0.296||
-model_prediction|stem|dafed064d867cfa5|2da97a5eec286659|0c4cced29dd178b3|-1355680761||t20745.7715823629s|s564014b|564014|rds|local|vector|||0.693||
-remnants|stem|33c09107535bf123|ee47194fd1e169c6|29bd5376b9a5ee53|-2133618822||t20745.7715838097s|s44b|44|rds|local|vector|||1.359|GDAL WARNING 6: driver MEM does not support creation option COMPRESS|
-inat_data|stem|f02fadd2fa271681|bee6225fc6cbda71|73e3204fb543b362|-327829861||t20745.7715822818s|s681408b|681408|rds|local|vector|||1.201||
-mean_evi.tif|stem|d8b67e14e6e5a67b|badfe8311d09cc52|29e3f57047379c66|2028932912||t20745.7715823397s|s2236266b|2236266|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||5634.026||
-years_since_fire.tif|stem|2e110b583550120a|eb64fb14e2790c63|49efc9d6a5cb637e|-1473882216||t20745.7715844347s|s861527b|861527|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiR1RpZmYiLCBvdmVyd3JpdGUgPSBUUlVFLCBnZGFsID0gTlVMTCksIGxpc3QoKSkpCn0&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.537||
-most_recent_evi_file|stem|13f3d681f282f13e|a9015b41f2249a69|534423916695efbf|1499096604||t20745.7715826291s|s420b|420|rds|local|vector|||0.632||
-park_fire_history|stem|b16ba44d7cc0f9bd|84c50cb6343dd146|6daa9ed665edbff4|-1459196363||t20745.7715837865s|s37900661b|37900661|rds|local|vector|||28.716|[extract] transforming vector data to the CRS of the raster|
-report_qmd_dir|stem|1f68c7b4d735b54e|d294b845a4bf0b19|aa504dd037ec8d77|-587239974|reports|t20745.771780276s|s2095134b|2095134|file|local|vector|||0.12||
-fires_wgs|stem|6560491d01392158|bac55a2b4dad201a|b19697255cdb2020|-1412513726||t20745.7715822703s|s1480126b|1480126|rds|local|vector|||0.665|GDAL Message 6: driver MEM does not support creation option COMPRESS|
-most_recent_evi.tif|stem|eeadd69975fff144|08ac6627ec0b4a80|5f65d5e3b05ae620|584900464||t20745.7715826175s|s2163595b|2163595|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||2.102||
-most_recent_evi_date|stem|03fb6f20c6362c16|e916fed5cfd49068|c027023535de7342|1533770614||t20745.7715826175s|s81b|81|rds|local|vector|||0||
-evi_export|stem|eeadd69975fff144|3384d37f4b5c6f1f|e482c02facc1f548|455980892|data/evi/most_recent_evi.tif|t20745.7717822515s|s2163595b|2163595|file|local|vector|||0.641|GDAL WARNING 6: driver MEM does not support creation option COMPRESS|
-delta_evi.tif|stem|90f5622170c4b392|48f3bce2caa1022a|7fdb1a9df18ecea3|356475177||t20745.7715822471s|s2590259b|2590259|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.072||
-current_month|stem|5d5f7b959cd2ed48|758036609ccfd948|793906069ae73809|1733484960||t20745.7715821767s|s51b|51|rds|local|vector|||0.001||
-coverage_metrics|stem|525e84ac06362859|7c0a17b9a4de12d1|4990abc6d39fd87b|261208453||t20745.7715821745s|s2821b|2821|rds|local|vector|||8.392||
-monthly_mean_evi.tif|stem|95ab61de61d1f773|075eb2340e0c354d|5a4a9e0906a8ac0a|-1300108052||t20745.7715825596s|s2229913b|2229913|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||445.958||
-monthly_delta_evi.tif|stem|22aa5cd237a878d1|9154da2658379bf3|1b4787bbc99880a0|1027632610||t20745.7715824902s|s2572234b|2572234|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.069||
+env_files|stem|e031f0150ab263b0|c5e40154e65ca64c|6366dea5e670171a|-616626180||t20745.8343512053s|s34319b|34319|rds|local|vector|||17.47||
+protected_areas|stem|cb62cd90325e1c0c|5b0e63caedc2b9f2|28dc3aa9e9a0a88e|1762567022||t20745.8343533581s|s680076b|680076|format_custom&read=ewogICAgaWYgKCJFU1JJIFNoYXBlZmlsZSIgPT0gIkVTUkkgU2hhcGVmaWxlIikgewogICAgICAgIHRlcnJhOjp2ZWN0KHBhc3RlMCgiL3ZzaXppcC97IiwgcGF0aCwgIn0iKSkKICAgIH0KICAgIGVsc2UgewogICAgICAgIHRlcnJhOjp2ZWN0KHBhdGgpCiAgICB9Cn0&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVWZWN0b3IsIGMobGlzdCh4ID0gb2JqZWN0LCBmaWxlbmFtZSA9IGlmZWxzZSgiRVNSSSBTaGFwZWZpbGUiID09IAogICAgICAgICJFU1JJIFNoYXBlZmlsZSIsIHllcyA9IHBhc3RlMChwYXRoLCAiLnNoeiIpLCBubyA9IHBhdGgpLCAKICAgICAgICBmaWxldHlwZSA9ICJFU1JJIFNoYXBlZmlsZSIsIG92ZXJ3cml0ZSA9IFRSVUUsIG9wdGlvbnMgPSAiRU5DT0RJTkc9VVRGLTgiKSwgCiAgICAgICAgbGlzdCgpKSkKICAgIGlmICgiRVNSSSBTaGFwZWZpbGUiID09ICJFU1JJIFNoYXBlZmlsZSIpIHsKICAgICAgICBmaWxlLnJlbmFtZShwYXN0ZTAocGF0aCwgIi5zaHoiKSwgcGF0aCkKICAgIH0KfQ&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||1.291||
+spatial_outputs|stem|096d6f9bbc751e31|5a005fea9c7c2c44|0c4cced29dd178b3|-167883086||t20745.834354203s|s29071445b|29071445|rds|local|vector|||1.999||
+model_results|stem|e294fb54cf70bfce|220c4bdcb3cdc3c4|0c4cced29dd178b3|-1523611067||t20745.8343514484s|s5585416b|5585416|rds|local|vector|||1.158||
+report_location|stem|9eedb05c62551393|cca3736b930ad1b4|2c530c1562a7fbd1|-708004005|report_prototype.qmd|t20745.8342883698s|s50911b|50911|file|local|vector|||2.261||
+data_freshness|stem|6018daa2b3fc5012|99ba4379678d633e|192a4c7b568a09b0|-1613002238||t20745.8343511102s|s479b|479|rds|local|vector|||3.208||
+weather_data|stem|0c9d6f145d29d1a6|84d278b10b5c4c04|3f72851a4dfb2d6d|-1316706071||t20745.8343542261s|s150499b|150499|rds|local|vector|||0.327||
+stations|stem|b13d2ca6e92fdacd|45468f6daedb8f74|f4c40ca39589447e|-1924759837||t20745.8343542146s|s2589b|2589|rds|local|vector|||0.296||
+model_prediction|stem|dafed064d867cfa5|2da97a5eec286659|0c4cced29dd178b3|-1355680761||t20745.8343513673s|s564014b|564014|rds|local|vector|||0.693||
+remnants|stem|33c09107535bf123|ee47194fd1e169c6|29bd5376b9a5ee53|-2133618822||t20745.8343533581s|s44b|44|rds|local|vector|||1.359|GDAL WARNING 6: driver MEM does not support creation option COMPRESS|
+inat_data|stem|f02fadd2fa271681|bee6225fc6cbda71|73e3204fb543b362|-327829861||t20745.8343512516s|s681408b|681408|rds|local|vector|||1.201||
+mean_evi.tif|stem|d8b67e14e6e5a67b|badfe8311d09cc52|29e3f57047379c66|2028932912||t20745.8343513442s|s2236266b|2236266|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||5634.026||
+years_since_fire.tif|stem|2e110b583550120a|eb64fb14e2790c63|49efc9d6a5cb637e|-1473882216||t20745.8343542609s|s861527b|861527|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiR1RpZmYiLCBvdmVyd3JpdGUgPSBUUlVFLCBnZGFsID0gTlVMTCksIGxpc3QoKSkpCn0&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.537||
+most_recent_evi_file|stem|13f3d681f282f13e|a9015b41f2249a69|534423916695efbf|1499096604||t20745.8343517377s|s420b|420|rds|local|vector|||0.632||
+park_fire_history|stem|b16ba44d7cc0f9bd|84c50cb6343dd146|6daa9ed665edbff4|-1459196363||t20745.8343533349s|s37900661b|37900661|rds|local|vector|||28.716|[extract] transforming vector data to the CRS of the raster|
+park_monthly_delta_evi_series|stem|281a02a7670d8ed5|40f6c7354a4f731c|8165d1d32d7bd527|1830614876||t20745.8358768395s|s47928b|47928|rds|local|vector|||101.956||
+report_qmd_dir|stem|b55433832bf5a7ac|d294b845a4bf0b19|e60ec3cf1bf9b8ce|-587239974|reports|t20745.8358797636s|s2138310b|2138310|file|local|vector|||0.124||
+fires_wgs|stem|6560491d01392158|bac55a2b4dad201a|b19697255cdb2020|-1412513726||t20745.83435124s|s1480126b|1480126|rds|local|vector|||0.665|GDAL Message 6: driver MEM does not support creation option COMPRESS|
+most_recent_evi.tif|stem|eeadd69975fff144|08ac6627ec0b4a80|5f65d5e3b05ae620|584900464||t20745.8343517261s|s2163595b|2163595|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||2.102||
+most_recent_evi_date|stem|03fb6f20c6362c16|e916fed5cfd49068|c027023535de7342|1533770614||t20745.8343517377s|s81b|81|rds|local|vector|||0||
+evi_export|stem|eeadd69975fff144|3384d37f4b5c6f1f|e482c02facc1f548|455980892|data/evi/most_recent_evi.tif|t20745.835882777s|s2163595b|2163595|file|local|vector|||0.212|GDAL Message 6: driver MEM does not support creation option COMPRESS|
+delta_evi.tif|stem|90f5622170c4b392|48f3bce2caa1022a|7fdb1a9df18ecea3|356475177||t20745.8343512053s|s2590259b|2590259|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.072||
+current_month|stem|5d5f7b959cd2ed48|758036609ccfd948|793906069ae73809|1733484960||t20745.8343511102s|s51b|51|rds|local|vector|||0.001||
+coverage_metrics|stem|525e84ac06362859|7c0a17b9a4de12d1|4990abc6d39fd87b|261208453||t20745.8343511072s|s2821b|2821|rds|local|vector|||8.392||
+monthly_mean_evi.tif|stem|95ab61de61d1f773|075eb2340e0c354d|5a4a9e0906a8ac0a|-1300108052||t20745.8343516451s|s2229913b|2229913|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||445.958||
+monthly_delta_evi.tif|stem|22aa5cd237a878d1|9154da2658379bf3|1b4787bbc99880a0|1027632610||t20745.8343515525s|s2572234b|2572234|format_custom&read=dGVycmE6OnJhc3QocGF0aCk&write=ewogICAgZG8uY2FsbCh0ZXJyYTo6d3JpdGVSYXN0ZXIsIGMobGlzdChvYmplY3QsIGZpbGVuYW1lID0gcGF0aCwgCiAgICAgICAgZmlsZXR5cGUgPSAiQ09HIiwgb3ZlcndyaXRlID0gVFJVRSwgZ2RhbCA9IE5VTEwpLCBsaXN0KCkpKQp9&marshal=dGVycmE6OndyYXAob2JqZWN0KQ&unmarshal=dGVycmE6OnVud3JhcChvYmplY3Qp&convert=&copy=&repository=|local|list|||0.069||

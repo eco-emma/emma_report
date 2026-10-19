@@ -273,7 +273,7 @@ format_coverage_domain_md <- function(coverage_metrics) {
   m <- coverage_metrics
   paste0(
     '<div class="emma-coverage-strip" markdown="1">\n\n',
-    "**Coverage (assessment)** — domain ",
+    "**Coverage** — domain ",
     fmt_km2(m$domain$km2), " km² · parks-union ",
     fmt_km2(m$parks_union$km2), " km² · valid latest fused EVI ",
     fmt_km2(m$valid_evi$km2), " km²",

@@ -39,9 +39,9 @@ stopifnot(watch$genus[[1]] == "Acacia", watch$n[[1]] == 2L)
 stopifnot(watch$newest_obs[watch$genus == "Acacia"] == as.Date("2026-06-01"))
 
 md_watch <- format_invasive_watch_md(watch)
-stopifnot(grepl("Acacia", md_watch), grepl("Caveats", md_watch))
-stopifnot(!grepl("pressure score", md_watch, ignore.case = TRUE) ||
-            grepl("Not a systematic survey or clearing priority score", md_watch))
+stopifnot(grepl("Acacia", md_watch), grepl("observer effort", md_watch))
+stopifnot(!grepl("Not a systematic survey", md_watch, ignore.case = TRUE))
+stopifnot(!grepl("clearing priority score", md_watch, ignore.case = TRUE))
 
 # --- Weather anomaly ---------------------------------------------------------
 set.seed(1)

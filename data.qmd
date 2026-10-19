@@ -19,7 +19,7 @@ tar_load(data_freshness)
 tar_load(most_recent_evi_date)
 ```
 
-Sources for maps and figures on this site are derived in `emma_report` from public [`eco-emma/emma_envdata`](https://github.com/eco-emma/emma_envdata) GitHub Releases and the STAC catalog. This page summarizes **what managers see**, where to download it, and how to open Cloud-Optimized GeoTIFFs — not a full file listing.
+Sources for maps and figures on this site are derived in `emma_report` from public [`eco-emma/emma_envdata`](https://github.com/eco-emma/emma_envdata) GitHub Releases and the STAC catalog. This page summarizes available data, where to download it, and how to open Cloud-Optimized GeoTIFFs.
 
 # Data shown on this site
 
@@ -43,7 +43,7 @@ Latest VI item id: **`r data_freshness$stac_item_id %||% "unavailable"`** · dat
 
 # GitHub data releases
 
-Release **tags** managers typically need (open the tag page for assets — not every filename):
+Release **tags** for common products (open a tag page for its assets):
 
 | Tag | Contents |
 |---|---|
@@ -58,9 +58,9 @@ Release **tags** managers typically need (open the tag page for assets — not e
 
 Download pattern: `https://github.com/eco-emma/emma_envdata/releases/download/<tag>/<filename>`.
 
-# Coverage / assessment metrics {#coverage-assessment-metrics}
+# Coverage metrics {#coverage-assessment-metrics}
 
-Quiet assessment numbers (not the home-page hero). Denominators use the 500 m domain grid.
+Domain and park coverage totals. Denominators use the 500 m domain grid.
 
 ```{r coverage-table, echo=FALSE}
 domain_km2 <- coverage_metrics$domain$km2
@@ -101,7 +101,7 @@ coverage_metrics$parks |>
 
 # Using COGs & STAC
 
-## QGIS (recommended for managers)
+## QGIS (recommended)
 
 1. **COG over HTTP** — Layer → Add Layer → Add Raster Layer → protocol `HTTPS`, paste a release download URL (or `/vsicurl/` + URL in the path field on some builds). Enable the COG driver if prompted.
 2. **STAC** — Install the **STAC API Browser** / **STAC** plugin (Plugins → Manage). Open the [catalog URL](`r ENVDATA_STAC_CATALOG_URL`), drill into the VI collection, and add a sensor asset (e.g. `viirs_noaa20`) as a raster.
@@ -158,7 +158,7 @@ cat(format_freshness_badge_md(data_freshness))
 ```
 
 <p class="emma-saeon-footer">
-SAEON packaging (archive / apps): 
+SAEON catalogue and project pages:
 <a href="https://catalogue.saeon.ac.za/">catalogue.saeon.ac.za</a> · 
 <a href="https://ulwazi.saeon.ac.za/projects/">ulwazi.saeon.ac.za/projects</a>
 </p>

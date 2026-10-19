@@ -56,6 +56,7 @@ source("R/envdata_contract.R", local = FALSE)
 source("R/coverage_metrics.R", local = FALSE)
 source("R/data_freshness.R", local = FALSE)
 source("R/park_manager_kpis.R", local = FALSE)
+source("R/weather_climatology.R", local = FALSE)
 
 # Real weather gate (do not overwrite with FALSE after this — that was the
 # #39/#40 merge bug that skipped station chunks and left focal_stations_sf unset).
@@ -418,122 +419,24 @@ n_stations=3 # number of stations to show
 
 ```
 
-```{r generate_precip_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
-  
-  #Generate precip dataset
-  
-# focal_weather %>%
-#   group_by(station_name,year,month)%>%
-#   summarise(monthly_precip_mm = sum(na.omit(mean_precip_mm)))%>%
-#   ungroup() %>%
-#   mutate(date_time = paste(year,month,01,sep = "-"))%>%
-#   mutate(date_time = strptime(date_time,format = "%Y-%m-%d"))%>%
-#   mutate(date_time = lubridate::floor_date(date_time)-1)%>%
-#   dplyr::filter(!is.na(date_time))%>%
-#   dplyr::select(date_time,station_name, monthly_precip_mm) %>%
-#    filter(date_time>as_date("2000-01-01")) |> 
-#   pivot_wider(values_from = monthly_precip_mm,
-#               names_from = station_name,
-#               values_fn = mean) %>%
-#    mutate(doy =  lubridate::yday(date_time) ) %>%
-#    left_join(x=.,
-#              y  = group_by(., doy) %>%
-#                summarize(mean = mean(c_across(!contains(c("doy","date_time"))),
-#                                          na.rm=TRUE))
-#              ) %>%
-#  dplyr::select(-doy)%>%
-#   xts::xts(order.by = .$date_time) -> focal_precip
-  
+```{r generate_climate_climatology, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
-library(zoo)
-# Set the rolling window size (must be odd for centering)
-window_size <- 61  # e.g., ±15 days = 31 total
+# DOY climatology layers (station-mean daily series → year ribbons + YTD).
+# Replaces multi-station xts / dygraph range-slider figures.
+climate_as_of <- Sys.Date()
+if (is.data.frame(focal_weather) &&
+      "date_time" %in% names(focal_weather) &&
+      nrow(focal_weather) >= 1L) {
+  climate_as_of <- max(as.Date(focal_weather$date_time), na.rm = TRUE)
+  if (!is.finite(climate_as_of)) {
+    climate_as_of <- Sys.Date()
+  }
+}
 
-# Step 1: Prepare the daily data
-focal_precip <- focal_weather %>%
-  filter(!is.na(mean_precip_mm)) %>%
-  select(station_name,date_time,mean_precip_mm) %>%
-  mutate(date_time = as_date(date_time)) %>%
-#  filter(date_time > as_date("2000-01-01")) %>%
-  pivot_wider(
-    names_from = station_name,
-    values_from = mean_precip_mm,
-    values_fn = mean
-  ) %>%
-  mutate(doy = yday(date_time))
-
-# Step 2: Compute the daily climatology using all years
-# Average across stations by DOY
-focal_precip_climatology <- focal_precip %>%
-  group_by(doy) %>%
-  summarise(clim_mean = mean(c_across(where(is.numeric)), na.rm = TRUE), .groups = "drop") %>%
-  arrange(doy)
-
-# Step 3: Apply rolling mean (wrap around to handle year start/end)
-# Pad the data for wrap-around
-extended <- bind_rows(
-  focal_precip_climatology %>% filter(doy > (366 - window_size)),
-  focal_precip_climatology,
-  focal_precip_climatology %>% filter(doy <= window_size)
-)
-
-# Compute the rolling mean twice to smooth it out
-extended$roll_mean <- zoo::rollmean(extended$clim_mean, k = window_size, fill = NA, align = "center") |> 
-  zoo::rollmean(k = window_size, fill = NA, align = "center")
-
-# Step 4: Remove padding and match back to original DOY
-rolling_climatology <- extended %>%
-  slice((window_size + 1):(n() - window_size)) %>%
-  select(doy, mean = roll_mean)
-
-# Step 5: Join back to the daily weather data
-focal_precip %>%
-  left_join(rolling_climatology, by = "doy") %>%
-  select(-doy) %>%
-   xts::xts(x=select(.,-date_time), order.by = .$date_time) -> focal_precip
-
-
-# calculate monthly totals
-  bind_cols(date_time=time(focal_precip),as.data.frame(focal_precip)) |> 
-    mutate(year=year(as_date(date_time)),month=month(as_date(date_time))) |> 
-    pivot_longer(-c(date_time,month,year),names_to="station",values_to="precip") |> 
-    group_by(station,year,month) |> 
-      summarize(precip=sum(precip,na.omit=T)) |> 
-      arrange(station,year,month) |> 
-    ungroup() |> 
-    mutate(date_time=ymd(paste(year,month,15))) |> 
-    select(-year,-month) |> 
-    pivot_wider(id_cols="date_time",names_from=station,values_from=precip)-> 
-    focal_precip_monthly
-  
-  focal_precip_monthly_xts <- xts::xts(x=select(focal_precip_monthly,-date_time), order.by = focal_precip_monthly$date_time) 
-
-
-```
-
-```{r generate_temp_dataset, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
-
-    #mean daily temp dataset
-
-  focal_weather%>%
-  group_by(station_name,year,month,day)%>%
-  summarise(daily_temp_C = mean(na.omit(temp_c)))%>%
-  ungroup() %>%
-mutate(date_time = paste(year,month,day,sep = "-"))%>%
-  mutate(date_time = strptime(date_time,format = "%Y-%m-%d"))%>%
-  dplyr::filter(!is.na(date_time))%>%
-  dplyr::select(date_time,station_name, daily_temp_C) %>%
-  pivot_wider(values_from = daily_temp_C,
-              names_from = station_name,
-              values_fn = mean) %>%
-   mutate(doy =  lubridate::yday(date_time) ) %>%
-   left_join(x=.,
-             y  = group_by(., doy) %>%
-               summarize(mean = mean(c_across(!contains(c("doy","date_time"))),
-                                         na.rm=TRUE))
-             ) %>%
-  dplyr::select(-doy)%>%
-    xts::xts(order.by = .$date_time) -> focal_mean_daily_temp
+precip_daily <- park_daily_weather(focal_weather, "mean_precip_mm")
+temp_daily <- park_daily_weather(focal_weather, "temp_c")
+precip_clim <- weather_climatology_layers(precip_daily, as_of = climate_as_of)
+temp_clim <- weather_climatology_layers(temp_daily, as_of = climate_as_of)
 
 ```
 
@@ -588,7 +491,7 @@ invasive_labels <- if (has_focal_invasives) {
 ```
 
 ```{r manager-kpi-prep, echo = FALSE, warning = FALSE, message = FALSE, include = FALSE}
-# Manager KPIs (ranks 3–6 + E1/E2). Soft-fail so park pages still render.
+# Manager KPIs (ranks 3–6 + E1 age-class). Soft-fail so park pages still render.
 
 park_mean_monthly_delta <- tryCatch(
   park_raster_mean(monthly_delta_evi.tif, focal_park),
@@ -665,11 +568,6 @@ age_class <- list(
   pct_lt5 = NA_real_, pct_5_10 = NA_real_, pct_10_20 = NA_real_,
   pct_gt20 = NA_real_, pct_censored = NA_real_
 )
-evi_tsf_df <- data.frame(
-  years_since_fire = numeric(),
-  evi = numeric(),
-  stringsAsFactors = FALSE
-)
 tryCatch(
   {
     if (!exists("get_domain_raster", mode = "function")) {
@@ -694,21 +592,14 @@ tryCatch(
     if (!terra::compareGeom(ysf_e1, domain_e1, stopOnError = FALSE)) {
       ysf_e1 <- terra::resample(ysf_e1, domain_e1[[1]], method = "near")
     }
-    evi_e1 <- most_recent_evi.tif
-    if (!terra::compareGeom(evi_e1, domain_e1, stopOnError = FALSE)) {
-      evi_e1 <- terra::resample(evi_e1, domain_e1[[1]], method = "near")
-    }
     if (!is.null(fireage_e1) &&
           !terra::compareGeom(fireage_e1, domain_e1, stopOnError = FALSE)) {
       fireage_e1 <- terra::resample(fireage_e1, domain_e1[[1]], method = "near")
     }
     age_class <- age_class_structure(ysf_e1, fireage_e1, park_mask_e1)
-    evi_tsf_df <- evi_tsf_scatter_df(
-      evi_e1, ysf_e1, fireage_e1, park_mask_e1
-    )
   },
   error = function(e) {
-    message("Age-class / EVI×TSF prep failed: ", conditionMessage(e))
+    message("Age-class prep failed: ", conditionMessage(e))
   }
 )
 ```
@@ -1136,40 +1027,6 @@ Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn
 cat(format_age_class_md(age_class))
 ```
 
-### Time since fire × greenness
-
-```{r evi-tsf-scatter, fig.width = 10, fig.height = 6, echo = FALSE, warning = FALSE, message = FALSE}
-if (nrow(evi_tsf_df) >= 2L) {
-  ggplot(evi_tsf_df, aes(x = years_since_fire, y = evi)) +
-    geom_point(alpha = 0.25, size = 1.1, color = "#3f6212") +
-    geom_smooth(
-      method = "loess",
-      se = TRUE,
-      linewidth = 0.8,
-      color = "#1f2937",
-      formula = y ~ x
-    ) +
-    labs(
-      x = "Years since fire (continuous, known burns)",
-      y = "Latest fused EVI",
-      title = "EVI vs time since fire"
-    ) +
-    theme_bw()
-} else {
-  ggplot() +
-    annotate(
-      "text",
-      x = 0.5,
-      y = 0.5,
-      label = "Insufficient known-age cells for EVI × age scatter"
-    ) +
-    theme_void()
-}
-```
-
-Figure 3. Park domain cells with known fire age: latest fused EVI against **continuous** years since fire (no age-class bins). Optional LOESS smooth is descriptive only.
-
-
 ```{r vegetation ages, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=F}
   
 ## Current Vegetation Age Distribution
@@ -1249,71 +1106,29 @@ cat(format_weather_anomaly_md(weather_anom))
 cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weather_data`) for nearby stations.*\n")
 ```
 
-```{r weatherdyplot, echo=FALSE, message=FALSE, warning=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
+```{r plot_precip, echo=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+#| fig-cap:
+#|   - "Figure 3. Daily precipitation over the previous 12 months ending at the latest GSOD observation (via emma_envdata `weather_data`). Thin grey lines are prior 12-month slices aligned onto this window; grey ribbons are the 5–95th and 25–75th percentiles; the thick black line is the long-term median; the thick red line is the current trailing year. The y-axis uses a log1p transform (tick labels in mm)."
 
-  # see: https://rstudio.github.io/dygraphs/
-
-# Define a shared group name
-shared_group <- "weather_group"
-
-focal_precip_df <- as.data.frame(focal_precip) |>  
-   mutate(across(where(is.numeric) & !any_of("date_time"), function(x) log1p(ifelse(x<0.001,0,x))))
-
-focal_precip_trans <-  xts::xts(focal_precip_df,order.by = as_date(rownames(focal_precip_df)))
-
-dygraph(focal_precip_trans,
-        main = "Precipitation (log1p-transformed y-axis)",
-        xlab = "Date",
-        ylab = "log1p(Precip mm)",
-       group = shared_group) %>%
-      dyAxis("y",
-         label = "Precip. (mm, log1p transform)",
-         axisLabelFormatter = JS(
-           "function(value, granularity, opts, dygraph) {
-              return Math.round(Math.exp(value) - 1);
-            }"
-         ),
-         valueFormatter = JS(
-    "function(num, opts, seriesName, g, row, col) {
-       return (Math.exp(num) - 1).toFixed(2);
-     }"
-  ))  |> 
-  dySeries() %>%
-  dyRangeSelector(dateWindow = c( Sys.Date() - time_window_days, Sys.Date())) ->
-  precip_graph
-
-
-      dygraph(data = focal_mean_daily_temp[,colnames(focal_mean_daily_temp)[which(colnames(focal_mean_daily_temp)!="date_time")]],
-          main = "Temperature",
-          xlab = "Date",
-          ylab = "Temp. (C)",
-          group = shared_group) %>%
-    dySeries() %>%
-    dyRangeSelector(dateWindow = c( Sys.Date() - time_window_days, Sys.Date())) -> 
-        mean_temp_graph
+plot_weather_climatology(
+  precip_clim,
+  ylab = "Precipitation (mm)",
+  title = "Precipitation (previous 12 months)",
+  log1p_y = TRUE
+)
 
 ```
 
-```{r plot_precip, echo=F, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message = F, fig.width = 10, fig.height = 6}
-#| fig-cap: 
-#|   - "Figure 4. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
-  #This code chunk plots the targets visualization.
-  # I do this in two steps to avoid errors that otherwise can occur
+```{r plot_temp, echo=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+#| fig-cap:
+#|   - "Figure 4. Daily temperature over the previous 12 months ending at the latest GSOD observation (via emma_envdata `weather_data`). Thin grey lines are prior 12-month slices aligned onto this window; grey ribbons are the 5–95th and 25–75th percentiles; the thick black line is the long-term median; the thick red line is the current trailing year."
 
-  precip_graph
-
-```
-
-```{r plot_temp, echo=F, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message = F, fig.width = 10, fig.height = 6}
-#| fig-cap: 
-#|   - "Figure 5. Climate data from GSOD via emma_envdata `weather_data`. Mean data is a long-term average for each day of the year across these weather stations."
-
-
-  #This code chunk plots the targets visualization.
-  # I do this in two steps to avoid errors that otherwise can occur
-
-  #temp_graph
-  mean_temp_graph
+plot_weather_climatology(
+  temp_clim,
+  ylab = "Temperature (°C)",
+  title = "Temperature (previous 12 months)",
+  log1p_y = FALSE
+)
 
 ```
 

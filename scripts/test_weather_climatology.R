@@ -77,12 +77,27 @@ daily_t <- park_daily_weather(fw, "temp_c")
 layers_t <- weather_climatology_layers(
   daily_t,
   as_of = as_of,
-  cumulative = FALSE
+  cumulative = FALSE,
+  smooth_days = 11L
 )
 stopifnot(isTRUE(layers_t$has_data), nrow(layers_t$envelope) >= 1L)
 stopifnot(layers_t$n_hist_years >= 3L)
+stopifnot(identical(as.integer(layers_t$smooth_days), 11L))
 # Temperature is daily, not forced to start at 0
 stopifnot(!isTRUE(all.equal(layers_t$current$value[[1]], 0)))
+# Envelope smoothing: median should be less jagged than unsmoothed
+raw_t <- weather_climatology_layers(
+  daily_t,
+  as_of = as_of,
+  cumulative = FALSE,
+  smooth_days = 1L
+)
+rough <- sum(abs(diff(raw_t$envelope$p50)), na.rm = TRUE)
+smooth <- sum(abs(diff(layers_t$envelope$p50)), na.rm = TRUE)
+stopifnot(smooth < rough)
+# Rolling helper sanity
+stopifnot(identical(park_roll_mean(1:5, window = 1L), as.numeric(1:5)))
+stopifnot(length(park_roll_mean(1:11, window = 11L)) == 11L)
 
 if (requireNamespace("ggplot2", quietly = TRUE)) {
   p <- plot_weather_climatology(

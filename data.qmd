@@ -28,7 +28,7 @@ Sources for maps and figures on this site are derived in `emma_report` from publ
 | Fused EVI | Latest greenness + monthly / long-term ΔEVI on park maps (EVI layer group) | `r format(most_recent_evi_date, "%Y-%m-%d")` |
 | Veld Age (years) | Continuous fire-age raster; true ages (not collapsed to 20) | `fireage` release snapshot |
 | Fire History | Burn outlines (one layer; age-bin stroke colors) | `fireage` release snapshot |
-| Invasives | Recent iNaturalist records in parks + 10 km buffer (small leaf markers) | `inat_data` |
+| Invasives | Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers) | `inat_data` |
 | Weather | Nearest GSOD station climate when rows exist (≥2000 when published) | `weather_data` |
 
 Multi-sensor EVI fill order: **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). NA in EVI layers means all available sensors were missing after QA.

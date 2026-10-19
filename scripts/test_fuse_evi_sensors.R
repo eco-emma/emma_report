@@ -130,4 +130,32 @@ if (requireNamespace("terra", quietly = TRUE)) {
   message("SKIP: terra not installed — raster fuse tests skipped")
 }
 
+# --- Monthly parquet month filter (no network) --------------------------------
+source("R/envdata_contract.R")
+# Stub VIIRS release lookup so list_vi_parquet_assets stays offline.
+list_release_assets <- function(...) {
+  data.frame(
+    tag = character(),
+    file_name = character(),
+    stringsAsFactors = FALSE
+  )
+}
+source("R/get_monthly_mean_evi.R")
+
+# Synthetic multi-year archive: filter must drop non-target months.
+dates <- seq.Date(as.Date("2020-01-01"), as.Date("2022-12-01"), by = "month")
+fake_env <- data.frame(
+  tag = ENVDATA_RELEASE_TAGS$vi_modis_parquet,
+  file_name = sprintf("vi_modis_%s.parquet", format(dates, "%Y%m%d")),
+  stringsAsFactors = FALSE
+)
+sept <- list_vi_parquet_assets(env_files = fake_env, current_month = 9L)
+stopifnot(nrow(sept) >= 1L)
+stopifnot(all(as.integer(lubridate::month(sept$file_date)) == 9L))
+stopifnot(length(unique(sept$file_date)) < length(unique(dates)))
+# NULL month = all dates (long-term path)
+all_dates <- list_vi_parquet_assets(env_files = fake_env, current_month = NULL)
+stopifnot(nrow(all_dates) == length(dates))
+message("PASS: monthly VI parquet month filter")
+
 message("All fuse_evi_sensors tests passed.")

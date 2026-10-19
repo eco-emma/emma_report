@@ -533,6 +533,81 @@ EVI_DELTA_MONTHLY_GROUP <- "\u0394EVI (monthly)"
 EVI_DELTA_LONGTERM_GROUP <- "\u0394EVI (long term)"
 EVI_LAYER_CONTROL_HEADER <- "EVI"
 
+#' Park polygon stroke (thin dark green; not Fire History reds).
+PARK_OUTLINE_COLOR <- "#14532d"
+PARK_OUTLINE_WEIGHT <- 1
+
+#' Small green leaf icon for iNat invasives (explicit iconSize; not CSS transform).
+#'
+#' Default awesome-marker pins are ~35×45 px; CSS `transform: scale(...)` on the
+#' marker element fights Leaflet's `translate3d` positioning and does not shrink
+#' reliably. This SVG leaf uses `iconWidth`/`iconHeight` instead.
+#'
+#' @param size pixel width/height (default 10 ≈ 25% of a ~40 px pin)
+#' @return leaflet icon list from [leaflet::makeIcon()]
+inat_leaf_icon <- function(size = 10L) {
+  size <- as.integer(size)[[1]]
+  if (!is.finite(size) || size < 4L) {
+    size <- 10L
+  }
+  svg <- paste0(
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' width='",
+    size, "' height='", size, "'>",
+    "<path fill='#15803d' stroke='#14532d' stroke-width='0.6' ",
+    "d='M8 1 C4 4 2 8 3 12 C5 10 7 9 8 15 C9 9 11 10 13 12 ",
+    "C14 8 12 4 8 1 Z'/></svg>"
+  )
+  uri <- paste0(
+    "data:image/svg+xml,",
+    utils::URLencode(svg, reserved = TRUE)
+  )
+  leaflet::makeIcon(
+    iconUrl = uri,
+    iconWidth = size,
+    iconHeight = size,
+    iconAnchorX = size / 2,
+    iconAnchorY = size / 2
+  )
+}
+
+#' JS: keep overlay draw order matching layer-control order (top of key = front).
+#'
+#' Walks `order` from bottom → top calling `bringToFront` via rstudio leaflet's
+#' `layerManager`, on load and whenever overlays are toggled.
+park_map_layer_stack_js <- function(order) {
+  order <- as.character(order)
+  order_js <- paste(
+    vapply(order, .park_map_js_str, character(1)),
+    collapse = ", "
+  )
+  sprintf(
+    paste0(
+      "function(el, x) {\n",
+      "  var map = this;\n",
+      "  var order = [%s];\n",
+      "  function restack() {\n",
+      "    if (!map.layerManager || !map.layerManager._byGroup) return;\n",
+      "    var byGroup = map.layerManager._byGroup;\n",
+      "    for (var i = order.length - 1; i >= 0; i--) {\n",
+      "      var g = byGroup[order[i]];\n",
+      "      if (!g) continue;\n",
+      "      Object.keys(g).forEach(function(k) {\n",
+      "        var layer = g[k];\n",
+      "        if (layer && typeof layer.bringToFront === 'function') {\n",
+      "          try { layer.bringToFront(); } catch (err) {}\n",
+      "        }\n",
+      "      });\n",
+      "    }\n",
+      "  }\n",
+      "  map.on('overlayadd', restack);\n",
+      "  map.on('overlayremove', restack);\n",
+      "  setTimeout(restack, 0);\n",
+      "}\n"
+    ),
+    order_js
+  )
+}
+
 #' Align EVI / fire-age SpatRasters into a RasterBrick for leafem hover query.
 #'
 #' Layer names match the combined map tooltip labels (NA → "—" is applied in JS).

@@ -1,10 +1,10 @@
 /* css styles */
 
-/* Small green Font Awesome leaf markers for iNat invasives (~25% of post-#56 size). */
-.awesome-marker.awesome-marker-icon-green {
-  transform: scale(0.05);
-  transform-origin: 16px 41px;
-}
+/*
+ * iNat leaf size is set in R via leaflet::makeIcon(iconWidth/iconHeight)
+ * (see inat_leaf_icon()). Do NOT scale .awesome-marker with CSS transform —
+ * it overwrites Leaflet's translate3d positioning and leaves pins full-size.
+ */
 
 /* Leaflet layer-control group header (injected for EVI children). */
 .leaflet-control-layers-overlays .emma-layer-group-header {

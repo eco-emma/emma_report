@@ -2,7 +2,8 @@ project:
   type: website
   render:
     - "*.qmd"
-    - "!report_prototype.qmd" #just the template - the final ones are generated in /reports
+    - "reports/*.qmd"
+    - "!report_prototype.qmd" # template only — park copies live under reports/
   execute-dir: "project"
   output-dir: "docs"
 
@@ -12,6 +13,8 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - href: data.qmd
+        text: Data
       - href: about.qmd
         text: About
       - href: model_summary.qmd

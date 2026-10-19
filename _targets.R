@@ -230,6 +230,24 @@ tar_age(name = inat_data,
 
 
 
+   # Quiet assessment KPIs (P0 coverage — 2D/3B/4B/10B/12A) for index/Data/parks.
+   tar_target(
+     name = coverage_metrics,
+     command = compute_coverage_metrics(
+       most_recent_evi.tif = most_recent_evi.tif,
+       most_recent_evi_date = most_recent_evi_date,
+       protected_areas = protected_areas,
+       temp_directory = temp_directory
+     )
+   ),
+
+   # Rank 7 freshness: STAC datetime + release updated_at (build time at render).
+   tar_age(
+     name = data_freshness,
+     command = compute_data_freshness(),
+     age = as.difftime(1, units = "days")
+   ),
+
    tar_target(name = report_location,
               command = "report_prototype.qmd", # park report template
               format = "file"),

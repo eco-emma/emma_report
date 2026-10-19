@@ -185,6 +185,8 @@ jobs:
                 "monthly_delta_evi.tif",
                 "mean_evi.tif",
                 "delta_evi.tif",
+                "coverage_metrics",
+                "data_freshness",
                 "report_qmd_dir",
                 "report_location"
               ))

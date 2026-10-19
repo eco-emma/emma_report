@@ -55,10 +55,13 @@ get_latest_vi_stac_datetime <- function() {
   props <- item$properties %||% list()
   out$item_id <- as.character(item$id %||% NA_character_)
   out$datetime <- as.character(props$datetime %||% NA_character_)
-  out$href <- as.character(
-    Filter(function(l) identical(l$rel, "self"), item$links %||% list())[[1]]$href %||%
-      NA_character_
+  self_links <- Filter(
+    function(l) identical(l$rel, "self"),
+    item$links %||% list()
   )
+  if (length(self_links) >= 1L) {
+    out$href <- as.character(self_links[[1]]$href %||% NA_character_)
+  }
   out
 }
 

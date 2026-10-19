@@ -1167,7 +1167,7 @@ if (nrow(evi_tsf_df) >= 2L) {
 }
 ```
 
-Figure 3. Park domain cells with known fire age: latest fused EVI against **continuous** years since fire (no age-class bins). Optional LOESS smooth is descriptive only — not a recovery model (E3 deferred).
+Figure 3. Park domain cells with known fire age: latest fused EVI against **continuous** years since fire (no age-class bins). Optional LOESS smooth is descriptive only.
 
 
 ```{r vegetation ages, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=F}

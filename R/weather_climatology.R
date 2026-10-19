@@ -7,6 +7,62 @@
 #
 # Precipitation: true in-window cumulative sum starting at 0 at the window
 # start and summing forward (not a trailing 365-day rolling sum).
+#
+# Envelope smoothing: after stacking prior years, median / percentile ribbons
+# are rolled with a centred ~11-day mean (see `smooth_days`) to damp day-of-
+# window noise. The current-year (red) series stays daily unless callers smooth
+# it separately.
+
+#' Centred rolling mean for a numeric vector (NA-aware).
+#'
+#' @param x numeric
+#' @param window odd integer window length (even values are bumped up by 1)
+#' @return numeric same length as `x`
+park_roll_mean <- function(x, window = 11L) {
+  x <- as.numeric(x)
+  n <- length(x)
+  w <- as.integer(window)[[1]]
+  if (!is.finite(w) || w < 1L || n < 1L) {
+    return(x)
+  }
+  if (w %% 2L == 0L) {
+    w <- w + 1L
+  }
+  if (w == 1L || n < w) {
+    return(x)
+  }
+  half <- (w - 1L) %/% 2L
+  out <- rep(NA_real_, n)
+  for (i in seq_len(n)) {
+    lo <- max(1L, i - half)
+    hi <- min(n, i + half)
+    chunk <- x[lo:hi]
+    chunk <- chunk[is.finite(chunk)]
+    if (length(chunk)) {
+      out[[i]] <- mean(chunk)
+    }
+  }
+  out
+}
+
+#' Smooth climatology envelope percentile columns with a rolling mean.
+#'
+#' @param envelope tibble with `plot_date` and `p05`…`p95`
+#' @param smooth_days window length (default 11)
+#' @return envelope with smoothed percentile columns
+smooth_climatology_envelope <- function(envelope, smooth_days = 11L) {
+  if (!is.data.frame(envelope) || nrow(envelope) < 1L) {
+    return(envelope)
+  }
+  env <- envelope
+  env <- env[order(env$plot_date), , drop = FALSE]
+  for (col in c("p05", "p25", "p50", "p75", "p95")) {
+    if (col %in% names(env)) {
+      env[[col]] <- park_roll_mean(env[[col]], window = smooth_days)
+    }
+  }
+  env
+}
 
 #' Station-mean daily series for one weather variable.
 #'
@@ -103,12 +159,15 @@ shift_dates_years <- function(dates, n_years) {
 #' @param as_of Date; window end (latest weather date)
 #' @param min_days_per_year minimum non-NA days for a historical slice to keep
 #' @param cumulative if TRUE, in-window cumulative sum from 0
+#' @param smooth_days centred rolling mean window for median/percentile ribbons
+#'   (default 11). Set `<= 1` to disable. Does not smooth the current (red) line.
 #' @return list with `years`, `envelope`, `current`, window dates, `has_data`,
-#'   `n_hist_years`, `record_start`, `record_end`
+#'   `n_hist_years`, `record_start`, `record_end`, `smooth_days`
 weather_climatology_layers <- function(daily,
                                        as_of = Sys.Date(),
                                        min_days_per_year = 60L,
-                                       cumulative = FALSE) {
+                                       cumulative = FALSE,
+                                       smooth_days = 11L) {
   empty_years <- tibble::tibble(
     year_offset = integer(),
     plot_date = as.Date(character()),
@@ -140,7 +199,8 @@ weather_climatology_layers <- function(daily,
     n_hist_years = 0L,
     record_start = as.Date(NA),
     record_end = as.Date(NA),
-    cumulative = isTRUE(cumulative)
+    cumulative = isTRUE(cumulative),
+    smooth_days = as.integer(smooth_days)[[1]]
   )
   if (!is.data.frame(daily) || nrow(daily) < 1L) {
     return(out)
@@ -244,6 +304,12 @@ weather_climatology_layers <- function(daily,
         .groups = "drop"
       ) |>
       dplyr::arrange(.data$plot_date)
+    if (is.finite(out$smooth_days) && out$smooth_days > 1L) {
+      out$envelope <- smooth_climatology_envelope(
+        out$envelope,
+        smooth_days = out$smooth_days
+      )
+    }
   }
 
   out$has_data <- nrow(out$envelope) >= 1L || nrow(out$current) >= 1L
@@ -282,18 +348,30 @@ plot_weather_climatology <- function(layers,
 
   subtitle <- NULL
   n_hist <- suppressWarnings(as.integer(layers$n_hist_years))
+  smooth_days <- suppressWarnings(as.integer(layers$smooth_days))
+  smooth_txt <- if (length(smooth_days) == 1L && is.finite(smooth_days) &&
+                      smooth_days > 1L) {
+    sprintf("; median/ribbons: %d-day rolling mean", smooth_days)
+  } else {
+    ""
+  }
   if (length(n_hist) == 1L && is.finite(n_hist) && n_hist >= 1L) {
     rs <- layers$record_start
     re <- layers$record_end
     if (!is.null(rs) && !is.null(re) && !is.na(rs) && !is.na(re)) {
       subtitle <- sprintf(
-        "Envelope from %d prior 12-mo slices (record %s–%s)",
+        "Envelope from %d prior 12-mo slices (record %s–%s)%s",
         n_hist,
         format(as.Date(rs), "%Y"),
-        format(as.Date(re), "%Y")
+        format(as.Date(re), "%Y"),
+        smooth_txt
       )
     } else {
-      subtitle <- sprintf("Envelope from %d prior 12-mo slices", n_hist)
+      subtitle <- sprintf(
+        "Envelope from %d prior 12-mo slices%s",
+        n_hist,
+        smooth_txt
+      )
     }
   }
 

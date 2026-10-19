@@ -672,26 +672,27 @@ park_query_brick <- tryCatch(
   }
 )
 
+# Raster add order is bottom→top of the layer key so the first paint matches
+# key order (top of key = front). `park_map_layer_stack_js` re-applies this
+# whenever overlays are toggled. Products: ΔEVI monthly = current − same-month
+# fuse-then-mean; ΔEVI long term = current − all-date fuse-then-mean.
 park_map <- leaflet(data = focal_wgs) %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
   addPolygons(
-    color = "black",
+    color = PARK_OUTLINE_COLOR,
+    weight = PARK_OUTLINE_WEIGHT,
+    opacity = 1,
     stroke = TRUE,
     fill = FALSE,
     group = "Park"
   ) %>%
   addRasterImage(
-    x = raster::raster(most_recent_evi.tif),
-    group = EVI_CURRENT_GROUP,
-    layerId = "evi_current",
-    colors = evi_pal
-  ) %>%
-  addRasterImage(
-    x = raster::raster(monthly_delta_evi.tif),
-    group = EVI_DELTA_MONTHLY_GROUP,
-    layerId = "evi_delta_monthly",
-    colors = delta_evi_pal
+    x = raster::raster(years_since_fire_map),
+    group = VELD_AGE_GROUP,
+    layerId = "veld_age",
+    colors = years_since_fire_pal,
+    opacity = 0.7
   ) %>%
   addRasterImage(
     x = raster::raster(delta_evi.tif),
@@ -700,24 +701,25 @@ park_map <- leaflet(data = focal_wgs) %>%
     colors = delta_evi_pal
   ) %>%
   addRasterImage(
-    x = raster::raster(years_since_fire_map),
-    group = VELD_AGE_GROUP,
-    layerId = "veld_age",
-    colors = years_since_fire_pal,
-    opacity = 0.7
+    x = raster::raster(monthly_delta_evi.tif),
+    group = EVI_DELTA_MONTHLY_GROUP,
+    layerId = "evi_delta_monthly",
+    colors = delta_evi_pal
+  ) %>%
+  addRasterImage(
+    x = raster::raster(most_recent_evi.tif),
+    group = EVI_CURRENT_GROUP,
+    layerId = "evi_current",
+    colors = evi_pal
   )
 
 # Permanent empty-iNat guard: leaflet crashes on markers with zero rows.
-# Small green Font Awesome leaves (~scale 0.05 = 25% of post-#56 size).
+# Small SVG leaves via makeIcon (iconSize 10×10 ≈ 25% of default awesome pin).
+# Do not use CSS transform:scale on .awesome-marker — it fights Leaflet translate3d.
 if (isTRUE(has_focal_invasives)) {
-  invasive_icons <- awesomeIcons(
-    icon = "leaf",
-    library = "fa",
-    markerColor = "green",
-    iconColor = "white"
-  )
+  invasive_icons <- inat_leaf_icon(size = 10L)
   park_map <- park_map %>%
-    addAwesomeMarkers(
+    addMarkers(
       data = focal_invasives,
       label = invasive_labels,
       group = "Invasives (new)",
@@ -854,11 +856,12 @@ if (!is.null(park_query_brick)) {
 
 park_map %>%
   htmlwidgets::onRender(park_map_evi_group_header_js()) %>%
-  htmlwidgets::onRender(park_map_tooltip_format_js())
+  htmlwidgets::onRender(park_map_tooltip_format_js()) %>%
+  htmlwidgets::onRender(park_map_layer_stack_js(overlay_groups))
 
 ```
 
-Figure 1. Leaflet map with World Imagery as the default basemap. Overlays include an **EVI** group (**EVI (current)**, **ΔEVI (monthly)**, **ΔEVI (long term)**), the continuous **Veld Age (years)** raster, burn outlines in a single **Fire History** layer (age-bin stroke colors), and recent invasive species records (small green leaves). A combined hover tooltip reports current EVI, monthly and long-term ΔEVI, and years since last known fire under the cursor (NA as —). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The veld-age color scale is truncated at 20 years for readability (0 light → 20+ dark); the hover tooltip uses true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Each legend appears only while its matching overlay is toggled on.
+Figure 1. Leaflet map with World Imagery as the default basemap. Overlays include an **EVI** group (**EVI (current)**, **ΔEVI (monthly)**, **ΔEVI (long term)**), the continuous **Veld Age (years)** raster, burn outlines in a single **Fire History** layer (age-bin stroke colors), park boundary as a thin dark green outline, and recent invasive species records (small green leaf markers, 10×10 px). Layer-control order matches draw order (top of the key paints on top). A combined hover tooltip reports current EVI, monthly and long-term ΔEVI, and years since last known fire under the cursor (NA as —). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). **ΔEVI (monthly)** = fused latest composite minus the fuse-then-mean of all composites in the same calendar month; **ΔEVI (long term)** = fused latest minus the fuse-then-mean over all available composite dates (all months). EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The veld-age color scale is truncated at 20 years for readability (0 light → 20+ dark); the hover tooltip uses true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Each legend appears only while its matching overlay is toggled on.
 
 ```{r invasive-watch-list, echo=FALSE, results='asis'}
 cat(format_invasive_watch_md(invasive_watch))
@@ -1025,9 +1028,15 @@ cat(format_invasive_watch_md(invasive_watch))
   }
   # Shared continuous calendar-year x-axis (ridgeline uses numeric year +
   # coord_flip so year ticks line up with the barplot and censored strip).
+  # Display window starts at 2000; series still computed from full history.
   if (is.finite(year_lo) && is.finite(year_hi) && year_lo <= year_hi) {
-    year_breaks <- seq(year_lo, year_hi, by = 1L)
-    year_limits <- c(year_lo - 0.5, year_hi + 0.5)
+    year_lo_display <- max(as.integer(year_lo), 2000L)
+    year_hi_display <- as.integer(year_hi)
+    if (year_lo_display > year_hi_display) {
+      year_lo_display <- year_hi_display
+    }
+    year_breaks <- seq(year_lo_display, year_hi_display, by = 1L)
+    year_limits <- c(year_lo_display - 0.5, year_hi_display + 0.5)
   } else {
     year_breaks <- integer()
     year_limits <- NULL
@@ -1160,7 +1169,7 @@ cat(format_invasive_watch_md(invasive_watch))
 
 ```
 
-Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Middle: ridgeplot of **true** vegetation ages for cells with a known burn (ages older than 20 years appear when the data support them). Bottom: proportion of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). The barplot, ridgeline, and censored strip share the same continuous calendar-year x-axis (ticks aligned vertically via cowplot).
+Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Middle: ridgeplot of **true** vegetation ages for cells with a known burn (ages older than 20 years appear when the data support them). Bottom: proportion of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). The barplot, ridgeline, and censored strip share the same continuous calendar-year x-axis (ticks aligned vertically via cowplot); the display window starts at **2000** (full historical series still used for the underlying tallies).
 
 ```{r age-class-strip, echo=FALSE, results='asis'}
 cat(format_age_class_md(age_class))
@@ -1264,6 +1273,16 @@ cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weath
   }
   sprintf("%d prior 12-mo slices from the published station record", n)
 }
+.clim_smooth_txt <- function(layers) {
+  d <- suppressWarnings(as.integer(layers$smooth_days))
+  if (length(d) == 1L && is.finite(d) && d > 1L) {
+    return(sprintf(
+      " Median and percentile ribbons use a centred %d-day rolling mean; ",
+      d
+    ))
+  }
+  " "
+}
 precip_fig_cap <- paste0(
   "Figure 3. Cumulative precipitation over the previous 12 months ",
   "(mm; curve starts at 0 at the window start and sums forward) ending at ",
@@ -1271,7 +1290,9 @@ precip_fig_cap <- paste0(
   "≥2000 when published). Thin grey lines are prior 12-month cumulative ",
   "slices aligned onto this window; grey ribbons are the 5–95th and 25–75th ",
   "percentiles; the thick black line is the long-term median; the thick red ",
-  "line is the current window cumulative. Envelope uses ",
+  "line is the current window cumulative (daily, unsmoothed).",
+  .clim_smooth_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
+  "Envelope uses ",
   .clim_span_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
   ". The y-axis uses a log1p transform (tick labels in mm)."
 )
@@ -1281,7 +1302,9 @@ temp_fig_cap <- paste0(
   "≥2000 when published). Thin grey lines are prior 12-month slices aligned ",
   "onto this window; grey ribbons are the 5–95th and 25–75th percentiles; ",
   "the thick black line is the long-term median; the thick red line is the ",
-  "current trailing year. Envelope uses ",
+  "current trailing year (daily, unsmoothed).",
+  .clim_smooth_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
+  "Envelope uses ",
   .clim_span_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
   ". Precip and temperature panels share the same rolling 12-month x-window."
 )

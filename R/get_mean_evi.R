@@ -24,11 +24,21 @@ get_mean_evi.tif <- function(env_files,
   }
 
   families <- unique(vi_files$family)
+  n_dates <- length(unique(vi_files$file_date))
+  n_months <- length(unique(as.integer(lubridate::month(vi_files$file_date))))
   message(
     "Long-term mean EVI fuse-then-mean using: ",
     paste(families, collapse = "+"),
-    " (", nrow(vi_files), " parquet files)"
+    " (", nrow(vi_files), " parquet files, ",
+    n_dates, " composite dates across ", n_months, " calendar months)"
   )
+  if (n_months < 2L && n_dates >= 24L) {
+    warning(
+      "get_mean_evi.tif(): expected multi-month long-term climatology but only ",
+      n_months, " calendar month(s) present in parquet list",
+      call. = FALSE
+    )
+  }
 
   evi_mean_from_parquet_files(vi_files, temp_directory = temp_directory)
 }

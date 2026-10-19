@@ -29,6 +29,7 @@ library(sf)
 library(terra)
 library(leaflet)
 library(forcats)
+library(htmlwidgets)
 
 # need to include all necessary targets here otherwise they aren't dependencies with tar_quarto()
 # temp_directory is a pipeline constant (not a tar_target) — do not tar_load it.
@@ -50,6 +51,7 @@ tar_load(report_qmd_dir) # forces park qmds to run first
 source("R/envdata_contract.R", local = FALSE)
 source("R/coverage_metrics.R", local = FALSE)
 source("R/data_freshness.R", local = FALSE)
+source("R/park_manager_kpis.R", local = FALSE)
   
 ```
 
@@ -88,20 +90,57 @@ Click on a park below to view park specific reports.
 
 ```{r park_map, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
+# Continuous veld-age raster (same product / naming as park pages after #57).
+years_since_fire_map <- years_since_fire.tif
+years_since_fire_map[years_since_fire_map > 20] <- 20
+years_since_fire_pal <- leaflet::colorNumeric(
+  palette = "Reds",
+  domain = c(0, 20),
+  reverse = FALSE,
+  na.color = "transparent"
+)
 
-  leaflet(data = protected_areas) %>%
-    addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
-    addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
-    #addProviderTiles("NASAGIBS.ModisTerraTrueColorCR", group = "True Colors") %>%
-  addPolygons(color = "black",
-              stroke = TRUE,
-              fill = TRUE,
-              group = "Park",
-              popup = ~tag) %>%
+index_overlay_groups <- c("Park", VELD_AGE_GROUP)
+
+index_map <- leaflet(data = protected_areas) %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
+  addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
+  addRasterImage(
+    x = raster::raster(years_since_fire_map),
+    group = VELD_AGE_GROUP,
+    layerId = "veld_age_index",
+    colors = years_since_fire_pal,
+    opacity = 0.7
+  ) %>%
+  addPolygons(
+    color = PARK_OUTLINE_COLOR,
+    weight = PARK_OUTLINE_WEIGHT,
+    opacity = 1,
+    stroke = TRUE,
+    fill = TRUE,
+    fillOpacity = 0.05,
+    fillColor = PARK_OUTLINE_COLOR,
+    group = "Park",
+    popup = ~tag
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    pal = years_since_fire_pal,
+    values = c(0, 20),
+    title = "Veld age<br/>(years)",
+    opacity = 1,
+    group = VELD_AGE_GROUP
+  ) %>%
   addLayersControl(
-    baseGroups = c("NatGeo","World Imagery"),
-    options = layersControlOptions(collapsed = FALSE),position = "topright") %>%
-  fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
+    baseGroups = c("World Imagery", "NatGeo"),
+    overlayGroups = index_overlay_groups,
+    options = layersControlOptions(collapsed = FALSE),
+    position = "topright"
+  ) %>%
+  fitBounds(bbox[1], bbox[2], bbox[3], bbox[4]) %>%
+  htmlwidgets::onRender(park_map_layer_stack_js(index_overlay_groups))
+
+index_map
 
 ```
 

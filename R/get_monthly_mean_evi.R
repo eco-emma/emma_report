@@ -64,10 +64,44 @@ list_vi_parquet_assets <- function(env_files = NULL,
     dplyr::filter(!is.na(.data$file_date))
 
   if (!is.null(current_month)) {
+    month_int <- as.integer(current_month)[[1]]
+    if (length(as.integer(current_month)) != 1L ||
+          is.na(month_int) || month_int < 1L || month_int > 12L) {
+      stop(
+        "list_vi_parquet_assets(): current_month must be a single integer 1–12; got ",
+        paste(deparse(current_month), collapse = " ")
+      )
+    }
+    n_before <- nrow(vi_files)
+    n_dates_before <- length(unique(vi_files$file_date))
     vi_files <- dplyr::filter(
       vi_files,
-      lubridate::month(.data$file_date) == current_month
+      as.integer(lubridate::month(.data$file_date)) == month_int
     )
+    n_after <- nrow(vi_files)
+    n_dates_after <- length(unique(vi_files$file_date))
+    message(
+      "VI parquet month filter: month=", month_int,
+      " files ", n_before, "→", n_after,
+      " dates ", n_dates_before, "→", n_dates_after
+    )
+    # Guard against the historical date-parse recycle bug that left every row
+    # with the same date and made monthly mean ≈ all-history mean (ΔEVI layers
+    # looked identical on park maps). With a multi-year archive, month filter
+    # must drop composites from other calendar months.
+    if (n_dates_before >= 24L && n_dates_after >= n_dates_before) {
+      stop(
+        "list_vi_parquet_assets(): month=", month_int,
+        " filter kept all ", n_dates_before,
+        " composite dates — refusing to build a bogus monthly climatology"
+      )
+    }
+    if (n_after < 1L) {
+      stop(
+        "list_vi_parquet_assets(): no VI parquet assets for calendar month ",
+        month_int
+      )
+    }
   }
 
   vi_files
@@ -212,16 +246,30 @@ evi_mean_from_parquet_files <- function(vi_files,
 #' domain grid in EVI units (value / 100), matching get_most_recent_evi.tif.
 get_monthly_mean_evi.tif <- function(env_files,
                                      temp_directory = "data/temp/",
-                                     current_month = current_month) {
+                                     current_month) {
+  if (missing(current_month) || is.null(current_month)) {
+    stop(
+      "get_monthly_mean_evi.tif(): current_month is required ",
+      "(calendar month 1–12 of most_recent_evi_date)"
+    )
+  }
+  month_int <- as.integer(current_month)[[1]]
+  if (is.na(month_int) || month_int < 1L || month_int > 12L) {
+    stop(
+      "get_monthly_mean_evi.tif(): current_month must be 1–12; got ",
+      paste(deparse(current_month), collapse = " ")
+    )
+  }
+
   vi_files <- list_vi_parquet_assets(
     env_files = env_files,
-    current_month = current_month
+    current_month = month_int
   )
 
   if (nrow(vi_files) == 0L) {
     stop(
       "No vi_*_YYYYMMDD.parquet assets found for month ",
-      current_month,
+      month_int,
       " on tags ",
       ENVDATA_RELEASE_TAGS$vi_modis_parquet,
       " / ",
@@ -229,11 +277,22 @@ get_monthly_mean_evi.tif <- function(env_files,
     )
   }
 
+  months_kept <- sort(unique(as.integer(lubridate::month(vi_files$file_date))))
+  if (!identical(months_kept, month_int)) {
+    stop(
+      "get_monthly_mean_evi.tif(): expected only month ", month_int,
+      " but parquet dates have month(s) ",
+      paste(months_kept, collapse = ",")
+    )
+  }
+
   families <- unique(vi_files$family)
   message(
-    "Monthly mean EVI fuse-then-mean using: ",
+    "Monthly mean EVI fuse-then-mean (month=", month_int, ") using: ",
     paste(families, collapse = "+"),
-    " (", nrow(vi_files), " parquet files)"
+    " (", nrow(vi_files), " parquet files, ",
+    length(unique(vi_files$file_date)), " composite dates; ",
+    "monthly_climatology_v2_month_filter)"
   )
 
   evi_mean_from_parquet_files(vi_files, temp_directory = temp_directory)

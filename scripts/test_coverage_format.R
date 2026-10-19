@@ -29,7 +29,7 @@ fake <- list(
 )
 
 md <- format_coverage_domain_md(fake)
-stopifnot(grepl("Coverage \\(assessment\\)", md))
+stopifnot(grepl("\\*\\*Coverage\\*\\*", md))
 stopifnot(grepl("data.html#coverage-assessment-metrics", md))
 stopifnot(!grepl("hero", md, ignore.case = TRUE))
 

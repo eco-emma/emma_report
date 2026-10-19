@@ -54,7 +54,7 @@ sleep_time = 10
 max_attempts = 10
 # Legacy report-output tag (emma_report releases). Envdata inputs use ENVDATA_RELEASE_TAGS.
 tag = "current"
-min_date = "1970-01-01"
+min_date = "2000-01-01"
 
 #tar_load(c(envdata, stan_data, model_results, spatial_outputs,model_prediction,protected_areas))
 #Sys.setenv(HOME="/home/rstudio")

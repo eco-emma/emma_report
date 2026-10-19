@@ -392,7 +392,7 @@ invasive_watch_list <- function(focal_invasives) {
 #'
 #' Uses the nearest station (first in `closest_stations` / first column after
 #' mean) when multiple stations are present. Long mean = all available history
-#' for the same station (GSOD window from emma_envdata, typically ~5 years).
+#' for the same station (GSOD rows from ≥2000 when published in emma_envdata).
 weather_12mo_anomaly <- function(focal_weather,
                                  closest_stations = character(0),
                                  as_of = Sys.Date()) {
@@ -523,6 +523,128 @@ FIRE_OUTLINE_GROUPS <- c(
 
 #' Single leaflet overlay group for all burn-outline polygons.
 FIRE_HISTORY_GROUP <- "Fire History"
+
+#' Continuous fire-age raster overlay (ex-"Years since fire").
+VELD_AGE_GROUP <- "Veld Age (years)"
+
+#' EVI overlay group labels (grouped under an "EVI" header in the layer control).
+EVI_CURRENT_GROUP <- "EVI (current)"
+EVI_DELTA_MONTHLY_GROUP <- "\u0394EVI (monthly)"
+EVI_DELTA_LONGTERM_GROUP <- "\u0394EVI (long term)"
+EVI_LAYER_CONTROL_HEADER <- "EVI"
+
+#' Align EVI / fire-age SpatRasters into a RasterBrick for leafem hover query.
+#'
+#' Layer names match the combined map tooltip labels (NA → "—" is applied in JS).
+park_map_query_brick <- function(evi, delta_monthly, delta_lt, years_since) {
+  to_raster <- function(x) {
+    if (inherits(x, "Raster")) {
+      return(x)
+    }
+    raster::raster(x)
+  }
+  evi_r <- to_raster(evi)
+  align_to <- function(r, template) {
+    r <- to_raster(r)
+    if (isTRUE(raster::compareRaster(r, template, stopiffalse = FALSE))) {
+      return(r)
+    }
+    raster::resample(r, template, method = "ngb")
+  }
+  dm_r <- align_to(delta_monthly, evi_r)
+  dlt_r <- align_to(delta_lt, evi_r)
+  ysf_r <- align_to(years_since, evi_r)
+  brick <- raster::brick(evi_r, dm_r, dlt_r, ysf_r)
+  names(brick) <- c(
+    "Current EVI",
+    "dEVI (monthly)",
+    "dEVI (long term)",
+    "Years since last known fire"
+  )
+  brick
+}
+
+#' Quote a string for embedding in generated JavaScript.
+.park_map_js_str <- function(x) {
+  sprintf('"%s"', gsub("([\\\\\"])", "\\\\\\1", as.character(x)))
+}
+
+#' JS to insert an "EVI" group header above the EVI child checkboxes.
+park_map_evi_group_header_js <- function(header = EVI_LAYER_CONTROL_HEADER,
+                                         first_child = EVI_CURRENT_GROUP) {
+  sprintf(
+    paste0(
+      "function(el, x) {\n",
+      "  var overlays = el.querySelector('.leaflet-control-layers-overlays');\n",
+      "  if (!overlays || overlays.querySelector('.emma-layer-group-header')) return;\n",
+      "  var labels = Array.prototype.slice.call(overlays.querySelectorAll('label'));\n",
+      "  var first = labels.find(function(lab) {\n",
+      "    return (lab.textContent || '').indexOf(%s) !== -1;\n",
+      "  });\n",
+      "  if (!first) return;\n",
+      "  var hdr = document.createElement('div');\n",
+      "  hdr.className = 'emma-layer-group-header';\n",
+      "  hdr.textContent = %s;\n",
+      "  overlays.insertBefore(hdr, first);\n",
+      "}\n"
+    ),
+    .park_map_js_str(first_child),
+    .park_map_js_str(header)
+  )
+}
+
+#' JS: rewrite leafem ImageQuery lines to Adam’s labels; NA → em dash.
+park_map_tooltip_format_js <- function() {
+  paste0(
+    "function(el, x) {\n",
+    "  var rename = {\n",
+    "    'Current EVI': 'Current EVI',\n",
+    "    'dEVI (monthly)': '\u0394EVI (monthly)',\n",
+    "    'dEVI (long term)': '\u0394EVI (long term)',\n",
+    "    'Years since last known fire': 'Years since last known fire'\n",
+    "  };\n",
+    "  var order = [\n",
+    "    'Current EVI',\n",
+    "    'dEVI (monthly)',\n",
+    "    'dEVI (long term)',\n",
+    "    'Years since last known fire'\n",
+    "  ];\n",
+    "  function fmt(v) {\n",
+    "    if (v == null || v === '' || v === 'NA' || v === 'NaN' || v === 'null') return '\\u2014';\n",
+    "    var n = Number(v);\n",
+    "    if (!isFinite(n)) return '\\u2014';\n",
+    "    return (Math.abs(n) >= 10 ? n.toFixed(1) : n.toFixed(3));\n",
+    "  }\n",
+    "  function reformat(node) {\n",
+    "    if (!node) return;\n",
+    "    var txt = node.innerText || node.textContent || '';\n",
+    "    if (txt.indexOf('Current EVI') === -1 && txt.indexOf('dEVI') === -1) return;\n",
+    "    var lines = txt.split(/\\r?\\n/).map(function(s) { return s.trim(); }).filter(Boolean);\n",
+    "    var vals = {};\n",
+    "    lines.forEach(function(line) {\n",
+    "      var idx = line.indexOf(':');\n",
+    "      if (idx < 0) return;\n",
+    "      var k = line.slice(0, idx).trim();\n",
+    "      var v = line.slice(idx + 1).trim();\n",
+    "      vals[k] = v;\n",
+    "    });\n",
+    "    var out = order.map(function(k) {\n",
+    "      var label = rename[k] || k;\n",
+    "      return label + ': ' + fmt(vals[k]);\n",
+    "    });\n",
+    "    node.innerHTML = out.join('<br/>');\n",
+    "  }\n",
+    "  var obs = new MutationObserver(function() {\n",
+    "    var nodes = el.querySelectorAll('.leaflet-control, .imageQuery, .leafem-coords, div');\n",
+    "    Array.prototype.forEach.call(nodes, function(n) {\n",
+    "      var t = n.innerText || '';\n",
+    "      if (t.indexOf('Current EVI') !== -1 || t.indexOf('dEVI') !== -1) reformat(n);\n",
+    "    });\n",
+    "  });\n",
+    "  obs.observe(el, { childList: true, subtree: true, characterData: true });\n",
+    "}\n"
+  )
+}
 
 #' Discrete stroke colors for fire-history age bins (one layer, multi-style).
 fire_history_outline_color <- function(years) {
@@ -657,8 +779,8 @@ format_weather_anomaly_md <- function(anom) {
     "**Rainfall & temperature context** (nearest station: ",
     anom$station_name %||% "—", ") — ",
     precip_txt, "; ", temp_txt, ". ",
-    "*Long mean uses the full GSOD record published in ",
-    "`weather_data` (typically ~5 years). Pair with monthly ΔEVI when ",
+    "*Long mean uses all GSOD rows from ≥2000 published in ",
+    "`weather_data` (span varies by park/station). Pair with monthly ΔEVI when ",
     "interpreting brown anomalies.*\n\n",
     "</div>\n"
   )

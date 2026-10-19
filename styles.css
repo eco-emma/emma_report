@@ -1,9 +1,17 @@
 /* css styles */
 
-/* Small green Font Awesome leaf markers for iNat invasives (~scale 0.2). */
+/* Small green Font Awesome leaf markers for iNat invasives (~25% of post-#56 size). */
 .awesome-marker.awesome-marker-icon-green {
-  transform: scale(0.2);
+  transform: scale(0.05);
   transform-origin: 16px 41px;
+}
+
+/* Leaflet layer-control group header (injected for EVI children). */
+.leaflet-control-layers-overlays .emma-layer-group-header {
+  display: block;
+  font-weight: 600;
+  margin: 0.35rem 0 0.15rem;
+  color: #1f2937;
 }
 
 /* Quiet assessment / freshness footers (not hero) — P0 coverage + rank 7 */

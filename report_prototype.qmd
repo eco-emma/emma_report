@@ -255,8 +255,8 @@ addLegend_decreasing <- function (map, position = c("topright", "bottomright", "
 
 
 # Create continuous palettes
-  # Fire-age colors: 0 = light, 20+ = dark (raster "Years since fire" +
-  # filled "Veld Age (years)"). Legend: decreasing=TRUE with reverse=FALSE.
+  # Fire-age colors: 0 = light, 20+ = dark (raster "Veld Age (years)").
+  # Legend: decreasing=TRUE with reverse=FALSE.
 
   antipal <- colorNumeric(
     palette = "Reds",
@@ -411,19 +411,19 @@ n_stations=3 # number of stations to show
 
 ```{r filter_old_weather_data, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
   
-  #Filter out oldest data
-  min_date = "1970-01-01"
+  # Use all published GSOD from ≥2000 (envdata harvest depth varies by release).
+  min_date = "2000-01-01"
   focal_weather <- 
     focal_weather %>%
-    dplyr::filter(date_time > as_datetime(min_date,tz =tz(focal_weather$date_time)))
+    dplyr::filter(date_time >= as_datetime(min_date, tz = tz(focal_weather$date_time)))
 
 ```
 
 ```{r generate_climate_climatology, echo = FALSE, warning = FALSE, message = FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 
-# Rolling 12-mo envelopes from the full GSOD record in weather_data for the
-# nearby station set (no invented years). Precip uses trailing 12-mo cumulative
-# mm; temperature stays daily °C.
+# Rolling 12-mo envelopes from the GSOD record (≥2000) in weather_data for the
+# nearby station set (no invented years). Precip: true in-window cumulative mm
+# starting at 0; temperature stays daily °C.
 climate_as_of <- Sys.Date()
 if (is.data.frame(focal_weather) &&
       "date_time" %in% names(focal_weather) &&
@@ -435,18 +435,19 @@ if (is.data.frame(focal_weather) &&
 }
 
 precip_daily <- park_daily_weather(focal_weather, "mean_precip_mm")
-precip_cum <- park_daily_trailing_sum(precip_daily, min_days = 60L)
 temp_daily <- park_daily_weather(focal_weather, "temp_c")
 # Use every prior slice that meets the day threshold (full published record).
 precip_clim <- weather_climatology_layers(
-  precip_cum,
+  precip_daily,
   as_of = climate_as_of,
-  min_days_per_year = 60L
+  min_days_per_year = 60L,
+  cumulative = TRUE
 )
 temp_clim <- weather_climatology_layers(
   temp_daily,
   as_of = climate_as_of,
-  min_days_per_year = 60L
+  min_days_per_year = 60L,
+  cumulative = FALSE
 )
 
 ```
@@ -633,6 +634,20 @@ cat(format_delta_evi_kpi_md(
 ```{r evi_and_burns, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
 # Default basemap: World Imagery (NatGeo remains available as alternate).
+# Combined hover query uses true ages (not the paint-truncated veld-age layer).
+park_query_brick <- tryCatch(
+  park_map_query_brick(
+    most_recent_evi.tif,
+    monthly_delta_evi.tif,
+    delta_evi.tif,
+    years_since_fire.tif
+  ),
+  error = function(e) {
+    message("Park map hover query stack unavailable: ", conditionMessage(e))
+    NULL
+  }
+)
+
 park_map <- leaflet(data = focal_wgs) %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
@@ -644,29 +659,32 @@ park_map <- leaflet(data = focal_wgs) %>%
   ) %>%
   addRasterImage(
     x = raster::raster(most_recent_evi.tif),
-    group = "EVI",
+    group = EVI_CURRENT_GROUP,
+    layerId = "evi_current",
     colors = evi_pal
   ) %>%
   addRasterImage(
     x = raster::raster(monthly_delta_evi.tif),
-    group = "delta EVI<br/>(monthly)",
+    group = EVI_DELTA_MONTHLY_GROUP,
+    layerId = "evi_delta_monthly",
     colors = delta_evi_pal
   ) %>%
   addRasterImage(
     x = raster::raster(delta_evi.tif),
-    group = "delta EVI<br/>(long-term)",
+    group = EVI_DELTA_LONGTERM_GROUP,
+    layerId = "evi_delta_longterm",
     colors = delta_evi_pal
   ) %>%
   addRasterImage(
     x = raster::raster(years_since_fire_map),
-    group = "Years since fire",
+    group = VELD_AGE_GROUP,
+    layerId = "veld_age",
     colors = years_since_fire_pal,
     opacity = 0.7
-  ) %>%
-  hideGroup("delta EVI<br/>(quarterly)")
+  )
 
 # Permanent empty-iNat guard: leaflet crashes on markers with zero rows.
-# Small green Font Awesome leaves (~scale 0.2 via styles.css).
+# Small green Font Awesome leaves (~scale 0.05 = 25% of post-#56 size).
 if (isTRUE(has_focal_invasives)) {
   invasive_icons <- awesomeIcons(
     icon = "leaf",
@@ -684,7 +702,7 @@ if (isTRUE(has_focal_invasives)) {
 }
 
 # One "Fire History" outline layer (age-bin stroke colors; single checkbox).
-# Filled polygons are "Veld Age (years)" (hidden by default). Labels use Years_true.
+# Filled burn polygons dropped (raster carries Veld Age).
 if (inherits(fires_wgs_truncated, "sf") && nrow(fires_wgs_truncated) >= 1L) {
   fires_wgs_truncated <- fires_wgs_truncated %>%
     dplyr::mutate(
@@ -700,14 +718,6 @@ if (inherits(fires_wgs_truncated, "sf") && nrow(fires_wgs_truncated) >= 1L) {
       label = ~paste(round(Years_true, 1), "years since burn"),
       weight = 1,
       group = FIRE_HISTORY_GROUP
-    ) %>%
-    addPolygons(
-      data = fires_wgs_truncated,
-      color = ~antipal(Years),
-      fillOpacity = .75,
-      stroke = FALSE,
-      label = ~round(Years_true, 1),
-      group = "Veld Age (years)"
     )
 }
 
@@ -731,72 +741,62 @@ if (isTRUE(has_focal_stations)) {
 
 park_map <- park_map %>%
   hideGroup("Stations") %>%
-  hideGroup("EVI") %>%
-  hideGroup("delta EVI<br/>(long-term)") %>%
-  hideGroup("Years since fire") %>%
-  hideGroup("Veld Age (years)")
+  hideGroup(EVI_CURRENT_GROUP) %>%
+  hideGroup(EVI_DELTA_LONGTERM_GROUP) %>%
+  hideGroup(VELD_AGE_GROUP)
 
 if (isTRUE(has_focal_invasives)) {
   park_map <- park_map %>% hideGroup("Invasives (new)")
 }
 
+# EVI children stay consecutive so the injected "EVI" header groups them.
 overlay_groups <- c(
   "Park",
   "Stations",
-  "delta EVI<br/>(monthly)",
-  "delta EVI<br/>(long-term)",
-  "EVI",
-  "Years since fire",
-  FIRE_HISTORY_GROUP,
-  "Veld Age (years)"
+  EVI_CURRENT_GROUP,
+  EVI_DELTA_MONTHLY_GROUP,
+  EVI_DELTA_LONGTERM_GROUP,
+  VELD_AGE_GROUP,
+  FIRE_HISTORY_GROUP
 )
 if (isTRUE(has_focal_invasives)) {
   overlay_groups <- c(overlay_groups, "Invasives (new)")
 }
 
 # Legends carry `group` so each shows/hides with its overlay (avoids stacking).
-park_map %>%
+park_map <- park_map %>%
   leaflet::addLegend(
     position = "topright",
     pal = delta_evi_pal,
     values = ~values(monthly_delta_evi.tif),
     opacity = 1,
-    title = "delta EVI<br/>(monthly)",
-    group = "delta EVI<br/>(monthly)"
+    title = "\u0394EVI<br/>(monthly)",
+    group = EVI_DELTA_MONTHLY_GROUP
   ) %>%
   leaflet::addLegend(
     position = "topright",
     pal = delta_evi_pal,
     values = ~values(delta_evi.tif),
     opacity = 1,
-    title = "delta EVI<br/>(long-term)",
-    group = "delta EVI<br/>(long-term)"
+    title = "\u0394EVI<br/>(long term)",
+    group = EVI_DELTA_LONGTERM_GROUP
   ) %>%
   leaflet::addLegend(
     position = "topright",
     pal = evi_pal,
     values = ~values(raster::raster(most_recent_evi.tif)),
     opacity = 1,
-    title = "EVI",
-    group = "EVI"
+    title = "EVI<br/>(current)",
+    group = EVI_CURRENT_GROUP
   ) %>%
   addLegend_decreasing(
     position = "bottomright",
     pal = years_since_fire_pal,
     values = c(0, 20),
-    title = "Years<br/>since<br/>fire",
-    opacity = 1,
-    decreasing = TRUE,
-    group = "Years since fire"
-  ) %>%
-  addLegend_decreasing(
-    position = "bottomright",
-    pal = antipal,
-    values = c(0, 20),
     title = "Veld age<br/>(years)",
     opacity = 1,
     decreasing = TRUE,
-    group = "Veld Age (years)"
+    group = VELD_AGE_GROUP
   ) %>%
   addLayersControl(
     baseGroups = c("World Imagery", "NatGeo"),
@@ -806,9 +806,35 @@ park_map %>%
   ) %>%
   fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
 
+# One combined hover tooltip (EVI + deltas + true years since fire).
+if (!is.null(park_query_brick)) {
+  park_map <- tryCatch(
+    {
+      park_map %>%
+        leafem::addImageQuery(
+          park_query_brick,
+          type = "mousemove",
+          layerId = "evi_current",
+          project = TRUE,
+          digits = 3,
+          position = "bottomleft",
+          prefix = ""
+        )
+    },
+    error = function(e) {
+      message("addImageQuery failed: ", conditionMessage(e))
+      park_map
+    }
+  )
+}
+
+park_map %>%
+  htmlwidgets::onRender(park_map_evi_group_header_js()) %>%
+  htmlwidgets::onRender(park_map_tooltip_format_js())
+
 ```
 
-Figure 1. Leaflet map with World Imagery as the default basemap. Overlays include monthly and long-term delta EVI, current EVI, the continuous **Years since fire** raster, burn outlines in a single **Fire History** layer (age-bin stroke colors), filled **Veld Age (years)** polygons, and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The years-since-fire raster and veld-age polygon color scales are truncated at 20 years for readability (0 light → 20+ dark); hover labels use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Each legend appears only while its matching overlay is toggled on.
+Figure 1. Leaflet map with World Imagery as the default basemap. Overlays include an **EVI** group (**EVI (current)**, **ΔEVI (monthly)**, **ΔEVI (long term)**), the continuous **Veld Age (years)** raster, burn outlines in a single **Fire History** layer (age-bin stroke colors), and recent invasive species records (small green leaves). A combined hover tooltip reports current EVI, monthly and long-term ΔEVI, and years since last known fire under the cursor (NA as —). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The veld-age color scale is truncated at 20 years for readability (0 light → 20+ dark); the hover tooltip uses true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Each legend appears only while its matching overlay is toggled on.
 
 ```{r invasive-watch-list, echo=FALSE, results='asis'}
 cat(format_invasive_watch_md(invasive_watch))
@@ -973,34 +999,57 @@ cat(format_invasive_watch_md(invasive_watch))
     year_lo <- NA_integer_
     year_hi <- NA_integer_
   }
+  # Shared continuous calendar-year x-axis (ridgeline uses numeric year +
+  # coord_flip so year ticks line up with the barplot and censored strip).
   if (is.finite(year_lo) && is.finite(year_hi) && year_lo <= year_hi) {
     year_breaks <- seq(year_lo, year_hi, by = 1L)
     year_limits <- c(year_lo - 0.5, year_hi + 0.5)
-    year_levels <- as.character(year_breaks)
   } else {
     year_breaks <- integer()
     year_limits <- NULL
-    year_levels <- character()
   }
+  shared_year_x <- function(p) {
+    if (is.null(year_limits) || !inherits(p, "ggplot")) {
+      return(p)
+    }
+    p +
+      scale_x_continuous(
+        limits = year_limits,
+        breaks = year_breaks,
+        expand = c(0.01, 0)
+      )
+  }
+  shared_panel_theme <- theme(
+    plot.margin = ggplot2::margin(4, 8, 2, 8)
+  )
 
-  if (nrow(ff_known) >= 1L && length(year_levels) >= 1L) {
+  if (nrow(ff_known) >= 1L && !is.null(year_limits)) {
     ff_known <- ff_known %>%
-      dplyr::mutate(year = factor(as.character(.data$year), levels = year_levels))
+      dplyr::mutate(year = as.numeric(.data$year))
     p1 <- ggplot(
       ff_known,
       mapping = aes(
         x = years_since_fire,
         y = year,
+        group = year,
         fill = after_stat(x)
       )
     ) +
-      ggridges::geom_density_ridges_gradient() +
+      ggridges::geom_density_ridges_gradient(
+        rel_min_height = 0.01,
+        scale = 0.9
+      ) +
       labs(fill = "Age") +
       xlab("Vegetation age (years, known burns)") +
-      ylab("Year") +
+      ylab(NULL) +
       theme_bw() +
       theme(legend.position = "none") +
-      scale_y_discrete(drop = FALSE, expand = c(.05, 0.2)) +
+      shared_panel_theme +
+      scale_y_continuous(
+        limits = year_limits,
+        breaks = year_breaks,
+        expand = c(0.01, 0)
+      ) +
       coord_flip()
   } else {
     p1 <- ggplot() +
@@ -1030,17 +1079,12 @@ cat(format_invasive_watch_md(invasive_watch))
     ) +
       geom_col(width = 0.8, fill = "firebrick") +
       ylab("Area burned (ha)") +
-      xlab("") +
+      xlab(NULL) +
       theme_bw() +
+      shared_panel_theme +
+      theme(axis.text.x = element_blank(), axis.ticks.x = element_blank()) +
       ggtitle("Area burned (calendar year of last burn)")
-    if (!is.null(year_limits)) {
-      p_burnedarea <- p_burnedarea +
-        scale_x_continuous(
-          limits = year_limits,
-          breaks = year_breaks,
-          expand = c(0.01, 0)
-        )
-    }
+    p_burnedarea <- shared_year_x(p_burnedarea)
   }
 
   # Thin strip: proportion of park cells right-censored / never-burned by year.
@@ -1051,28 +1095,31 @@ cat(format_invasive_watch_md(invasive_watch))
     ) +
       geom_area(fill = "grey55", alpha = 0.55) +
       geom_line(color = "grey25", linewidth = 0.4) +
-      scale_x_continuous(
-        limits = year_limits,
-        breaks = year_breaks,
-        expand = c(0.01, 0)
-      ) +
       scale_y_continuous(
         limits = c(0, 1),
         breaks = c(0, 0.5, 1),
         labels = function(x) paste0(round(x * 100), "%")
       ) +
       ylab("Censored") +
-      xlab("") +
+      xlab(NULL) +
       theme_bw() +
+      shared_panel_theme +
       theme(
         axis.title.y = element_text(size = 8),
         axis.text.y = element_text(size = 7),
-        axis.text.x = element_text(size = 8),
-        plot.margin = ggplot2::margin(2, 5, 2, 5)
+        axis.text.x = element_text(size = 8)
       )
+    p_cens <- shared_year_x(p_cens)
   } else {
     p_cens <- ggplot() +
       theme_void()
+  }
+
+  # Hide year tick labels on the ridgeline (after coord_flip they sit on x);
+  # bottom strip keeps the shared calendar-year labels.
+  if (inherits(p1, "ggplot") && !is.null(year_limits)) {
+    p1 <- p1 +
+      theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
   }
 
   plot_grid(
@@ -1089,7 +1136,7 @@ cat(format_invasive_watch_md(invasive_watch))
 
 ```
 
-Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Middle: ridgeplot of **true** vegetation ages for cells with a known burn (ages older than 20 years appear when the data support them). Bottom: proportion of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). The barplot, ridgeline, and censored strip share the same calendar-year x-axis range.
+Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Middle: ridgeplot of **true** vegetation ages for cells with a known burn (ages older than 20 years appear when the data support them). Bottom: proportion of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). The barplot, ridgeline, and censored strip share the same continuous calendar-year x-axis (ticks aligned vertically via cowplot).
 
 ```{r age-class-strip, echo=FALSE, results='asis'}
 cat(format_age_class_md(age_class))
@@ -1195,23 +1242,24 @@ cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weath
 }
 precip_fig_cap <- paste0(
   "Figure 3. Cumulative precipitation over the previous 12 months ",
-  "(trailing 365-day sum, mm) ending at the latest GSOD observation ",
-  "(via emma_envdata `weather_data`). Thin grey lines are prior 12-month ",
+  "(mm; curve starts at 0 at the window start and sums forward) ending at ",
+  "the latest GSOD observation (via emma_envdata `weather_data`, rows from ",
+  "≥2000 when published). Thin grey lines are prior 12-month cumulative ",
   "slices aligned onto this window; grey ribbons are the 5–95th and 25–75th ",
   "percentiles; the thick black line is the long-term median; the thick red ",
-  "line is the current trailing year. Envelope uses ",
+  "line is the current window cumulative. Envelope uses ",
   .clim_span_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
   ". The y-axis uses a log1p transform (tick labels in mm)."
 )
 temp_fig_cap <- paste0(
   "Figure 4. Daily temperature over the previous 12 months ending at the ",
-  "latest GSOD observation (via emma_envdata `weather_data`). Thin grey ",
-  "lines are prior 12-month slices aligned onto this window; grey ribbons ",
-  "are the 5–95th and 25–75th percentiles; the thick black line is the ",
-  "long-term median; the thick red line is the current trailing year. ",
-  "Envelope uses ",
+  "latest GSOD observation (via emma_envdata `weather_data`, rows from ",
+  "≥2000 when published). Thin grey lines are prior 12-month slices aligned ",
+  "onto this window; grey ribbons are the 5–95th and 25–75th percentiles; ",
+  "the thick black line is the long-term median; the thick red line is the ",
+  "current trailing year. Envelope uses ",
   .clim_span_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
-  "."
+  ". Precip and temperature panels share the same rolling 12-month x-window."
 )
 ```
 
@@ -1219,7 +1267,7 @@ temp_fig_cap <- paste0(
 
 plot_weather_climatology(
   precip_clim,
-  ylab = "Cumulative precip (mm / 12 mo)",
+  ylab = "Cumulative precip (mm)",
   title = "Cumulative precipitation (previous 12 months)",
   log1p_y = TRUE
 )

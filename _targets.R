@@ -241,6 +241,26 @@ tar_age(name = inat_data,
      )
    ),
 
+   # Rank 3 / E4 stress flag: park-mean monthly ΔEVI lookback (VI parquet).
+   # Built once for all parks so Quarto does not re-download / soft-fail per page.
+   # Light PR CI stubs an empty frame (website itself is stubbed).
+   tar_target(
+     name = park_monthly_delta_evi_series,
+     command = {
+       if (identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+         empty_park_monthly_delta_evi_series()
+       } else {
+         build_park_monthly_delta_evi_series(
+           protected_areas = protected_areas,
+           env_files = env_files,
+           temp_directory = temp_directory,
+           lookback_months = STRESS_SERIES_MONTHS,
+           verbose = TRUE
+         )
+       }
+     }
+   ),
+
    # Rank 7 freshness: STAC datetime + release updated_at (build time at render).
    tar_age(
      name = data_freshness,

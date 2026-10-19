@@ -3,8 +3,18 @@
 # Run: Rscript scripts/test_park_manager_kpis.R
 
 source("R/envdata_contract.R")
+source("R/fuse_evi_sensors.R")
+source("R/get_monthly_mean_evi.R")
 source("R/coverage_metrics.R")
 source("R/park_manager_kpis.R")
+
+# Lookback helpers must be visible (regression: Quarto previously omitted these
+# sources, so park_mean_evi_series soft-failed → Stress flag unavailable).
+stopifnot(exists("list_vi_parquet_assets", mode = "function"))
+stopifnot(exists("fuse_evi_by_pid_date", mode = "function"))
+stopifnot(exists("build_park_monthly_delta_evi_series", mode = "function"))
+stopifnot(exists("park_stress_delta_series", mode = "function"))
+stopifnot(nrow(empty_park_monthly_delta_evi_series()) == 0L)
 
 # --- CV / stress flag --------------------------------------------------------
 stopifnot(is.na(cv_anomaly_series(c(1, 2))))
@@ -91,5 +101,34 @@ d_s <- park_mean_monthly_delta_series(evi_s)
 stopifnot(nrow(d_s) == 4L, all(c("monthly_delta") %in% names(d_s)))
 # Jan clim = mean(0.30, 0.25) = 0.275 → deltas 0.025, -0.025
 stopifnot(abs(d_s$monthly_delta[d_s$date == as.Date("2024-01-15")] - 0.025) < 1e-9)
+
+# --- All-parks lookback join → stress flag -----------------------------------
+lookback <- rbind(
+  cbind(park_name = "Limietberg Nature Reserve Complex", d_s),
+  data.frame(
+    park_name = "Other Park",
+    date = as.Date("2025-01-15"),
+    park_mean_evi = 0.2,
+    month_clim = 0.2,
+    monthly_delta = 0,
+    stringsAsFactors = FALSE
+  )
+)
+lb <- park_stress_delta_series(lookback, "Limietberg Nature Reserve Complex")
+stopifnot(nrow(lb) == 4L, !("park_name" %in% names(lb)) || TRUE)
+# Extend with a brown tail so N=3 trips
+brown <- data.frame(
+  park_name = "Limietberg Nature Reserve Complex",
+  date = as.Date(c("2025-03-15", "2025-04-15", "2025-05-15")),
+  park_mean_evi = c(0.1, 0.08, 0.05),
+  month_clim = c(0.3, 0.3, 0.3),
+  monthly_delta = c(-0.2, -0.22, -0.25),
+  stringsAsFactors = FALSE
+)
+lookback2 <- rbind(lookback, brown)
+lb2 <- park_stress_delta_series(lookback2, "Limietberg Nature Reserve Complex")
+st_lb <- evaluate_stress_flag(lb2$monthly_delta, k = 0.25, n = 3L)
+stopifnot(is.finite(st_lb$threshold), is.finite(st_lb$cv))
+stopifnot(nrow(park_stress_delta_series(lookback, "Missing Park")) == 0L)
 
 message("All park manager KPI tests passed.")

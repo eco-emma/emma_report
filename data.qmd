@@ -84,14 +84,14 @@ EVI composite date: **`r format(coverage_metrics$evi_as_of, "%Y-%m-%d")`**.
 
 `r coverage_metrics$fire_mask_note`
 
-Park pages use the same metrics with denominator = **domain cells intersecting the park**.
+**Park area (VIIRS cells intersecting the park)**
 
 ```{r park-coverage-preview, echo=FALSE}
 coverage_metrics$parks |>
   arrange(desc(denom_km2)) |>
   transmute(
     Park = name,
-    `Denom. km²` = fmt_km2(denom_km2),
+    `Park Area (km²)` = fmt_km2(denom_km2),
     `Valid EVI km²` = fmt_km2(valid_evi_km2),
     `Fire known km²` = fmt_km2(fire_known_km2),
     `Fire censored km²` = fmt_km2(fire_censored_km2)

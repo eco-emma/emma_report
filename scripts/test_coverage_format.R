@@ -8,6 +8,9 @@ source("R/data_freshness.R")
 
 stopifnot(identical(fmt_km2(12345.6), "12,346"))
 stopifnot(identical(fmt_km2(NA_real_), "—"))
+# Vectorized path used by dplyr transmute on park rows (regression for all-dashes bug)
+stopifnot(identical(fmt_km2(c(225.2, NA_real_, 1000)), c("225", "—", "1,000")))
+stopifnot(identical(fmt_km2(numeric(0)), character(0)))
 
 fake <- list(
   cell_km2 = 0.25,
@@ -34,8 +37,26 @@ stopifnot(grepl("data.html#coverage-assessment-metrics", md))
 stopifnot(!grepl("hero", md, ignore.case = TRUE))
 
 pmd <- format_coverage_park_md(fake, "Table Mountain National Park")
-stopifnot(grepl("domain cells intersecting park", pmd))
+stopifnot(grepl("VIIRS cells intersecting the park", pmd))
+stopifnot(grepl("park area", pmd))
 stopifnot(grepl("\\.\\./data.html", pmd))
+
+# Simulate Data-page park table formatting (must not all be em-dash)
+parks2 <- rbind(
+  fake$parks,
+  data.frame(
+    name = "Cederberg Nature Reserve Complex",
+    denom_km2 = 1000,
+    valid_evi_km2 = 900,
+    valid_evi_pct = 90,
+    fire_known_km2 = 400,
+    fire_censored_km2 = 600,
+    stringsAsFactors = FALSE
+  )
+)
+formatted <- fmt_km2(parks2$denom_km2)
+stopifnot(identical(formatted, c("225", "1,000")))
+stopifnot(!any(formatted == "—"))
 
 fresh <- list(
   stac_item_id = "vi_20260921",

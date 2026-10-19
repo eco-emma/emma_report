@@ -3,8 +3,8 @@
 #' Computes quiet-footer KPIs (decisions **2D**, **3B**, **4B**, **10B**, **12A**):
 #' domain km², parks-union km², valid latest fused EVI km², and fire-age
 #' known + censored km² after masking cells where all fireage bands are NA.
-#' Park rows use the same definitions with denominator = domain cells
-#' intersecting the park polygon (`touches = TRUE`).
+#' Park area = VIIRS/domain cells intersecting the park polygon
+#' (`touches = TRUE`); EVI and fire metrics use the same park mask.
 
 #' Cell area in km² for the 500 m EMMA domain grid (EPSG:9221).
 emma_cell_km2 <- function(r = NULL) {
@@ -260,12 +260,24 @@ compute_coverage_metrics <- function(most_recent_evi.tif,
   )
 }
 
-#' Format km² for quiet assessment strips
+#' Format km² for coverage tables and strips (vectorized).
+#'
+#' Must accept column vectors: dplyr `transmute()` / `mutate()` pass the
+#' whole column at once. A scalar-only check (`length(x) != 1`) made every
+#' park-summary cell render as "—" on the Data page.
 fmt_km2 <- function(x, digits = 0) {
-  if (length(x) != 1L || !is.finite(x)) {
-    return("—")
+  x <- as.numeric(x)
+  out <- rep("—", length(x))
+  ok <- is.finite(x)
+  if (any(ok)) {
+    out[ok] <- format(
+      round(x[ok], digits),
+      big.mark = ",",
+      scientific = FALSE,
+      trim = TRUE
+    )
   }
-  format(round(x, digits), big.mark = ",", scientific = FALSE, trim = TRUE)
+  out
 }
 
 #' Markdown for the quiet domain coverage strip (index / Data page)
@@ -303,8 +315,8 @@ format_coverage_park_md <- function(coverage_metrics, park_name) {
   }
   paste0(
     '<div class="emma-coverage-strip emma-coverage-park" markdown="1">\n\n',
-    "**Coverage (park)** — denominator ",
-    fmt_km2(row$denom_km2), " km² (domain cells intersecting park) · ",
+    "**Coverage (park)** — park area ",
+    fmt_km2(row$denom_km2), " km² (VIIRS cells intersecting the park) · ",
     "valid fused EVI ", fmt_km2(row$valid_evi_km2), " km² (",
     sprintf("%.0f", row$valid_evi_pct), "%) · ",
     "fire-age known ", fmt_km2(row$fire_known_km2), " km² / censored ",

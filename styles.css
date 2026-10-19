@@ -33,3 +33,38 @@
 .emma-saeon-footer a {
   color: #4b5563;
 }
+
+/* Manager KPI / watch / climate / age-class strips (ranks 3–5, E1) */
+.emma-kpi-strip,
+.emma-watch-list,
+.emma-climate-card,
+.emma-age-class-strip {
+  margin: 0.85rem 0 1rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #2f2f2f;
+  background: #f7f8fa;
+  border-left: 3px solid #6b7280;
+}
+
+.emma-stress-flag {
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+}
+
+.emma-stress-on {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.emma-stress-off {
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.emma-stress-na {
+  color: #4b5563;
+  background: #e5e7eb;
+}

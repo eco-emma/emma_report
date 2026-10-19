@@ -55,6 +55,7 @@ tar_load(data_freshness)
 source("R/envdata_contract.R", local = FALSE)
 source("R/coverage_metrics.R", local = FALSE)
 source("R/data_freshness.R", local = FALSE)
+source("R/park_manager_kpis.R", local = FALSE)
 
 # Real weather gate (do not overwrite with FALSE after this — that was the
 # #39/#40 merge bug that skipped station chunks and left focal_stations_sf unset).
@@ -586,9 +587,143 @@ invasive_labels <- if (has_focal_invasives) {
 
 ```
 
+```{r manager-kpi-prep, echo = FALSE, warning = FALSE, message = FALSE, include = FALSE}
+# Manager KPIs (ranks 3–6 + E1/E2). Soft-fail so park pages still render.
+
+park_mean_monthly_delta <- tryCatch(
+  park_raster_mean(monthly_delta_evi.tif, focal_park),
+  error = function(e) NA_real_
+)
+
+stress_eval <- list(
+  flagged = FALSE,
+  threshold = NA_real_,
+  cv = NA_real_,
+  latest = park_mean_monthly_delta,
+  n_below = 0L,
+  k = STRESS_FLAG_K,
+  n = STRESS_FLAG_N,
+  n_composites = 0L
+)
+stress_series_df <- data.frame(
+  date = as.Date(character()),
+  monthly_delta = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Stress series from VI parquets (36-mo lookback). Skip in light CI.
+if (!identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
+  tryCatch(
+    {
+      if (!exists("get_domain_raster", mode = "function")) {
+        source("R/envdata_contract.R", local = TRUE)
+      }
+      domain_kpi <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
+      park_pids_kpi <- park_domain_pids(domain_kpi, focal_park)
+      evi_series <- park_mean_evi_series(
+        park_pids = park_pids_kpi,
+        env_files = NULL,
+        temp_directory = "data/temp/",
+        lookback_months = STRESS_SERIES_MONTHS,
+        verbose = TRUE
+      )
+      stress_series_df <- park_mean_monthly_delta_series(evi_series)
+      # Align latest series point with map raster park-mean when present.
+      if (nrow(stress_series_df) >= 1L && is.finite(park_mean_monthly_delta)) {
+        stress_series_df$monthly_delta[[nrow(stress_series_df)]] <-
+          park_mean_monthly_delta
+      }
+      stress_eval <- evaluate_stress_flag(
+        stress_series_df$monthly_delta,
+        k = STRESS_FLAG_K,
+        n = STRESS_FLAG_N
+      )
+      if (!is.finite(stress_eval$latest) && is.finite(park_mean_monthly_delta)) {
+        stress_eval$latest <- park_mean_monthly_delta
+      }
+    },
+    error = function(e) {
+      message("Stress-flag series unavailable: ", conditionMessage(e))
+    }
+  )
+}
+
+invasive_watch <- invasive_watch_list(
+  if (isTRUE(has_focal_invasives)) {
+    focal_invasives
+  } else if (inherits(focal_invasives, "sf")) {
+    focal_invasives[0, ]
+  } else {
+    data.frame()
+  }
+)
+
+fires_wgs_truncated <- fires_wgs_truncated %>%
+  mutate(outline_group = fire_outline_age_bin(Years_true))
+
+age_class <- list(
+  pct_lt5 = NA_real_, pct_5_10 = NA_real_, pct_10_20 = NA_real_,
+  pct_gt20 = NA_real_, pct_censored = NA_real_
+)
+evi_tsf_df <- data.frame(
+  years_since_fire = numeric(),
+  evi = numeric(),
+  stringsAsFactors = FALSE
+)
+tryCatch(
+  {
+    if (!exists("get_domain_raster", mode = "function")) {
+      source("R/envdata_contract.R", local = TRUE)
+    }
+    domain_e1 <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
+    park_masks_e1 <- park_domain_masks(domain_e1, focal_park)
+    park_mask_e1 <- park_masks_e1[[1]]
+    fireage_e1 <- tryCatch(
+      {
+        fp <- download_envdata_asset(
+          tag = ENVDATA_RELEASE_TAGS$fireage,
+          file = "fireage_current.tif",
+          dest_dir = "data/temp",
+          overwrite = FALSE
+        )
+        terra::rast(fp)
+      },
+      error = function(e) NULL
+    )
+    ysf_e1 <- years_since_fire.tif
+    if (!terra::compareGeom(ysf_e1, domain_e1, stopOnError = FALSE)) {
+      ysf_e1 <- terra::resample(ysf_e1, domain_e1[[1]], method = "near")
+    }
+    evi_e1 <- most_recent_evi.tif
+    if (!terra::compareGeom(evi_e1, domain_e1, stopOnError = FALSE)) {
+      evi_e1 <- terra::resample(evi_e1, domain_e1[[1]], method = "near")
+    }
+    if (!is.null(fireage_e1) &&
+          !terra::compareGeom(fireage_e1, domain_e1, stopOnError = FALSE)) {
+      fireage_e1 <- terra::resample(fireage_e1, domain_e1[[1]], method = "near")
+    }
+    age_class <- age_class_structure(ysf_e1, fireage_e1, park_mask_e1)
+    evi_tsf_df <- evi_tsf_scatter_df(
+      evi_e1, ysf_e1, fireage_e1, park_mask_e1
+    )
+  },
+  error = function(e) {
+    message("Age-class / EVI×TSF prep failed: ", conditionMessage(e))
+  }
+)
+```
+
 
 # `r focal_park_name`
 
+```{r manager-delta-kpi, echo=FALSE, results='asis'}
+cat(format_delta_evi_kpi_md(
+  park_mean_monthly_delta,
+  stress_eval,
+  evi_as_of = most_recent_evi_date,
+  lookback_months = STRESS_SERIES_MONTHS
+))
+```
 
 ## EVI and Time Since Fire
 
@@ -645,18 +780,26 @@ if (isTRUE(has_focal_invasives)) {
     )
 }
 
-# Outlines/fills use truncated Years for color; labels use true ages (Years_true).
+# Outlines: age-binned groups for chronological filter (rank 6 — recent vs old).
+# Fills keep a single "Fires" group (hidden by default). Labels use Years_true.
+for (grp in FIRE_OUTLINE_GROUPS) {
+  fires_grp <- fires_wgs_truncated %>% dplyr::filter(.data$outline_group == grp)
+  if (nrow(fires_grp) < 1L) {
+    next
+  }
+  park_map <- park_map %>%
+    addPolygons(
+      data = fires_grp,
+      color = "red",
+      fill = TRUE,
+      fillOpacity = 0,
+      stroke = TRUE,
+      label = ~paste(round(Years_true, 1), "years since burn"),
+      weight = 1,
+      group = grp
+    )
+}
 park_map <- park_map %>%
-  addPolygons(
-    data = fires_wgs_truncated,
-    color = "red",
-    fill = TRUE,
-    fillOpacity = 0,
-    stroke = TRUE,
-    label = ~paste(round(Years_true, 1), "years since burn"),
-    weight = 1,
-    group = "Fire Outlines"
-  ) %>%
   addPolygons(
     data = fires_wgs_truncated,
     color = ~antipal(Years),
@@ -689,7 +832,10 @@ park_map <- park_map %>%
   hideGroup("EVI") %>%
   hideGroup("delta EVI<br/>(long-term)") %>%
   hideGroup("Years since fire") %>%
-  hideGroup("Fires")
+  hideGroup("Fires") %>%
+  # Default: recent burns on; older chronological bins off (rank 6)
+  hideGroup("Burns 10–20 y") %>%
+  hideGroup("Burns >20 y")
 
 if (isTRUE(has_focal_invasives)) {
   park_map <- park_map %>% hideGroup("Invasives (new)")
@@ -702,7 +848,7 @@ overlay_groups <- c(
   "delta EVI<br/>(long-term)",
   "EVI",
   "Years since fire",
-  "Fire Outlines",
+  FIRE_OUTLINE_GROUPS,
   "Fires"
 )
 if (isTRUE(has_focal_invasives)) {
@@ -742,7 +888,11 @@ park_map %>%
 
 ```
 
-Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The years-since-fire raster and filled fire polygon color scales are truncated at 20 years for readability (0 light → 20+ dark); hover labels use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2).
+Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, years since the most recent fire (raster + outlines), and recent invasive species records (small green leaves). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). Monthly delta EVI is the fused latest composite minus the fuse-then-mean for the same calendar month; long-term delta uses the fuse-then-mean over all available composite dates. EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The years-since-fire raster and filled fire polygon color scales are truncated at 20 years for readability (0 light → 20+ dark); hover labels use true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Fire outlines are split into age bins (&lt;5 / 5–10 / 10–20 / &gt;20 y) so recent vs older burns can be toggled in the layer control (years-since-fire as a chronological proxy).
+
+```{r invasive-watch-list, echo=FALSE, results='asis'}
+cat(format_invasive_watch_md(invasive_watch))
+```
 
 ## Area burned and vegetation ages
 
@@ -982,6 +1132,43 @@ Figure 1. Leaflet map showing monthly and long-term delta EVI, current EVI, year
 
 Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Bottom: Ridgeplot of **true** vegetation ages for cells with a known burn. Percentages label the share of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). Ages older than 20 years appear when the data support them.
 
+```{r age-class-strip, echo=FALSE, results='asis'}
+cat(format_age_class_md(age_class))
+```
+
+### Time since fire × greenness
+
+```{r evi-tsf-scatter, fig.width = 10, fig.height = 6, echo = FALSE, warning = FALSE, message = FALSE}
+if (nrow(evi_tsf_df) >= 2L) {
+  ggplot(evi_tsf_df, aes(x = years_since_fire, y = evi)) +
+    geom_point(alpha = 0.25, size = 1.1, color = "#3f6212") +
+    geom_smooth(
+      method = "loess",
+      se = TRUE,
+      linewidth = 0.8,
+      color = "#1f2937",
+      formula = y ~ x
+    ) +
+    labs(
+      x = "Years since fire (continuous, known burns)",
+      y = "Latest fused EVI",
+      title = "EVI vs time since fire"
+    ) +
+    theme_bw()
+} else {
+  ggplot() +
+    annotate(
+      "text",
+      x = 0.5,
+      y = 0.5,
+      label = "Insufficient known-age cells for EVI × age scatter"
+    ) +
+    theme_void()
+}
+```
+
+Figure 3. Park domain cells with known fire age: latest fused EVI against **continuous** years since fire (no age-class bins). Optional LOESS smooth is descriptive only — not a recovery model (E3 deferred).
+
 
 ```{r vegetation ages, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=F}
   
@@ -1042,6 +1229,21 @@ Figure 3. Histogram of vegetation ages. For the purposes of this plot, any veget
 
 
 ## Weather Data
+
+```{r weather-anomaly-card, echo=FALSE, results='asis'}
+weather_anom <- if (isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)) &&
+                      is.data.frame(get0("focal_weather", inherits = TRUE, ifnotfound = NULL)) &&
+                      nrow(focal_weather) >= 1L) {
+  weather_12mo_anomaly(
+    focal_weather = focal_weather,
+    closest_stations = get0("closest_stations", inherits = TRUE, ifnotfound = character(0)),
+    as_of = Sys.Date()
+  )
+} else {
+  list(has_weather = FALSE)
+}
+cat(format_weather_anomaly_md(weather_anom))
+```
 
 ```{r weather_unavailable, echo=FALSE, results='asis', eval=!isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
 cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weather_data`) for nearby stations.*\n")

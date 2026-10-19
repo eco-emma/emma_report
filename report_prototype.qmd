@@ -53,10 +53,20 @@ tar_load(coverage_metrics)
 tar_load(data_freshness)
 
 source("R/envdata_contract.R", local = FALSE)
+# Stress-flag lookback needs VI listing + fuse helpers (not only park_manager_kpis).
+source("R/fuse_evi_sensors.R", local = FALSE)
+source("R/get_monthly_mean_evi.R", local = FALSE)
 source("R/coverage_metrics.R", local = FALSE)
 source("R/data_freshness.R", local = FALSE)
 source("R/park_manager_kpis.R", local = FALSE)
 source("R/weather_climatology.R", local = FALSE)
+
+# Rank 3 / E4: all-parks VI parquet lookback (targets product). Empty on
+# EMMA_CI_LIGHT or when the store predates this target.
+park_monthly_delta_evi_series <- tryCatch(
+  targets::tar_read(park_monthly_delta_evi_series),
+  error = function(e) empty_park_monthly_delta_evi_series()
+)
 
 # Real weather gate (do not overwrite with FALSE after this — that was the
 # #39/#40 merge bug that skipped station chunks and left focal_stations_sf unset).
@@ -526,23 +536,37 @@ stress_series_df <- data.frame(
   stringsAsFactors = FALSE
 )
 
-# Stress series from VI parquets (36-mo lookback). Skip in light CI.
+# Stress series: prefer pipeline lookback target; fall back to per-park VI
+# parquet pull (needs fuse + list_vi_parquet_assets sourced above). Skip in
+# light CI.
 if (!identical(Sys.getenv("EMMA_CI_LIGHT"), "1")) {
   tryCatch(
     {
-      if (!exists("get_domain_raster", mode = "function")) {
-        source("R/envdata_contract.R", local = TRUE)
-      }
-      domain_kpi <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
-      park_pids_kpi <- park_domain_pids(domain_kpi, focal_park)
-      evi_series <- park_mean_evi_series(
-        park_pids = park_pids_kpi,
-        env_files = NULL,
-        temp_directory = "data/temp/",
-        lookback_months = STRESS_SERIES_MONTHS,
-        verbose = TRUE
+      stress_series_df <- park_stress_delta_series(
+        park_monthly_delta_evi_series,
+        focal_park_name
       )
-      stress_series_df <- park_mean_monthly_delta_series(evi_series)
+      if (nrow(stress_series_df) < 3L) {
+        if (!exists("get_domain_raster", mode = "function")) {
+          source("R/envdata_contract.R", local = TRUE)
+        }
+        if (!exists("list_vi_parquet_assets", mode = "function")) {
+          source("R/get_monthly_mean_evi.R", local = TRUE)
+        }
+        if (!exists("fuse_evi_by_pid_date", mode = "function")) {
+          source("R/fuse_evi_sensors.R", local = TRUE)
+        }
+        domain_kpi <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
+        park_pids_kpi <- park_domain_pids(domain_kpi, focal_park)
+        evi_series <- park_mean_evi_series(
+          park_pids = park_pids_kpi,
+          env_files = NULL,
+          temp_directory = "data/temp/",
+          lookback_months = STRESS_SERIES_MONTHS,
+          verbose = TRUE
+        )
+        stress_series_df <- park_mean_monthly_delta_series(evi_series)
+      }
       # Align latest series point with map raster park-mean when present.
       if (nrow(stress_series_df) >= 1L && is.finite(park_mean_monthly_delta)) {
         stress_series_df$monthly_delta[[nrow(stress_series_df)]] <-

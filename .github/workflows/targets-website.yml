@@ -186,6 +186,7 @@ jobs:
                 "mean_evi.tif",
                 "delta_evi.tif",
                 "coverage_metrics",
+                "park_monthly_delta_evi_series",
                 "data_freshness",
                 "report_qmd_dir",
                 "report_location"

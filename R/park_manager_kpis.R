@@ -254,6 +254,248 @@ park_mean_monthly_delta_series <- function(evi_series) {
     dplyr::select("date", "park_mean_evi", "month_clim", "monthly_delta")
 }
 
+#' Empty schema for `park_monthly_delta_evi_series` target / soft-fail.
+empty_park_monthly_delta_evi_series <- function() {
+  data.frame(
+    park_name = character(),
+    date = as.Date(character()),
+    park_mean_evi = numeric(),
+    month_clim = numeric(),
+    monthly_delta = numeric(),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Filter all-parks ΔEVI lookback to one park (oldest→newest).
+park_stress_delta_series <- function(series_df, park_name) {
+  empty <- data.frame(
+    date = as.Date(character()),
+    park_mean_evi = numeric(),
+    month_clim = numeric(),
+    monthly_delta = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (!is.data.frame(series_df) || nrow(series_df) < 1L) {
+    return(empty)
+  }
+  if (!all(c("park_name", "date", "monthly_delta") %in% names(series_df))) {
+    return(empty)
+  }
+  park_name <- as.character(park_name)[[1]]
+  out <- series_df[series_df$park_name == park_name, , drop = FALSE]
+  if (!nrow(out)) {
+    return(empty)
+  }
+  out <- out[order(as.Date(out$date)), , drop = FALSE]
+  keep <- intersect(
+    c("date", "park_mean_evi", "month_clim", "monthly_delta"),
+    names(out)
+  )
+  out[, keep, drop = FALSE]
+}
+
+#' Build park-mean monthly ΔEVI lookback for all parks (one VI parquet pass).
+#'
+#' Pipeline target used by park pages for the stress flag (rank 3 / E4).
+#' Downloads the lookback window once, fuses sensors per composite date, then
+#' park-mean EVI → calendar-month climatology ΔEVI per park.
+#'
+#' Requires `list_vi_parquet_assets` (`R/get_monthly_mean_evi.R`) and
+#' `fuse_evi_by_pid_date` (`R/fuse_evi_sensors.R`) — available when `_targets.R`
+#' sources `R/`, not when Quarto only sources a subset of helpers.
+build_park_monthly_delta_evi_series <- function(protected_areas,
+                                                env_files = NULL,
+                                                temp_directory = "data/temp/",
+                                                lookback_months = STRESS_SERIES_MONTHS,
+                                                verbose = TRUE) {
+  empty <- empty_park_monthly_delta_evi_series()
+  parks <- sf::st_as_sf(protected_areas)
+  if (!nrow(parks) || !"name" %in% names(parks)) {
+    if (isTRUE(verbose)) {
+      message("build_park_monthly_delta_evi_series: no protected_areas$name")
+    }
+    return(empty)
+  }
+
+  if (!exists("list_vi_parquet_assets", mode = "function")) {
+    stop(
+      "list_vi_parquet_assets() missing — source R/get_monthly_mean_evi.R ",
+      "(and R/fuse_evi_sensors.R) before building the stress lookback series."
+    )
+  }
+  if (!exists("fuse_evi_by_pid_date", mode = "function")) {
+    stop(
+      "fuse_evi_by_pid_date() missing — source R/fuse_evi_sensors.R ",
+      "before building the stress lookback series."
+    )
+  }
+
+  domain <- get_domain_raster(dest_dir = temp_directory, overwrite = FALSE)
+  park_pid_map <- vector("list", nrow(parks))
+  names(park_pid_map) <- as.character(parks$name)
+  for (i in seq_len(nrow(parks))) {
+    pids <- tryCatch(
+      park_domain_pids(domain, parks[i, , drop = FALSE]),
+      error = function(e) integer()
+    )
+    park_pid_map[[i]] <- as.integer(pids)
+  }
+  all_pids <- unique(stats::na.omit(unlist(park_pid_map, use.names = FALSE)))
+  if (!length(all_pids)) {
+    if (isTRUE(verbose)) {
+      message("build_park_monthly_delta_evi_series: no domain pids for parks")
+    }
+    return(empty)
+  }
+
+  vi_files <- tryCatch(
+    list_vi_parquet_assets(env_files = env_files, current_month = NULL),
+    error = function(e) {
+      stop(
+        "list_vi_parquet_assets failed for stress lookback: ",
+        conditionMessage(e)
+      )
+    }
+  )
+  if (is.null(vi_files) || !nrow(vi_files)) {
+    stop("No VI parquet assets listed for stress lookback series")
+  }
+
+  cutoff <- seq.Date(
+    Sys.Date(),
+    by = paste0("-", as.integer(lookback_months), " months"),
+    length.out = 2L
+  )[[2]]
+  vi_files <- dplyr::filter(vi_files, .data$file_date >= cutoff)
+  if (!nrow(vi_files)) {
+    stop(
+      "No VI parquet assets in the last ", lookback_months,
+      " months for stress lookback (cutoff ", cutoff, ")"
+    )
+  }
+
+  n_files <- nrow(vi_files)
+  if (isTRUE(verbose)) {
+    message(
+      "Stress lookback: downloading/caching ", n_files,
+      " VI parquet assets (≥ ", cutoff, ")"
+    )
+  }
+  for (i in seq_len(n_files)) {
+    download_envdata_asset(
+      tag = vi_files$tag[[i]],
+      file = vi_files$file_name[[i]],
+      dest_dir = temp_directory,
+      overwrite = FALSE,
+      verbose = FALSE
+    )
+    if (isTRUE(verbose) && (i == 1L || i == n_files || i %% 25L == 0L)) {
+      message("Stress lookback parquet ", i, "/", n_files)
+    }
+  }
+  vi_files <- vi_files |>
+    dplyr::mutate(path = file.path(temp_directory, .data$file_name))
+  vi_files <- vi_files[file.exists(vi_files$path), , drop = FALSE]
+  if (!nrow(vi_files)) {
+    stop("Stress lookback: VI parquet downloads missing under ", temp_directory)
+  }
+
+  dates <- sort(unique(vi_files$file_date))
+  pid_set <- as.integer(all_pids)
+  # Accumulator: list of data.frames(park_name, date, park_mean_evi)
+  evi_rows <- vector("list", length(dates) * length(park_pid_map))
+  er_i <- 0L
+  t0 <- proc.time()[["elapsed"]]
+  for (di in seq_along(dates)) {
+    d <- dates[[di]]
+    day_files <- vi_files$path[vi_files$file_date == d]
+    raw <- tryCatch(
+      arrow::open_dataset(day_files) |>
+        dplyr::select(dplyr::any_of(c("pid", "date", "sensor", "value"))) |>
+        dplyr::filter(.data$pid %in% pid_set) |>
+        dplyr::collect(),
+      error = function(e) NULL
+    )
+    if (is.null(raw) || !nrow(raw)) {
+      next
+    }
+    if (!"date" %in% names(raw)) {
+      raw$date <- d
+    }
+    fused <- fuse_evi_by_pid_date(raw)
+    fused <- fused[!is.na(fused$value), , drop = FALSE]
+    if (!nrow(fused)) {
+      next
+    }
+    fused$value <- scale_evi_integer(fused$value)
+    for (park_nm in names(park_pid_map)) {
+      pids <- park_pid_map[[park_nm]]
+      if (!length(pids)) {
+        next
+      }
+      vals <- fused$value[fused$pid %in% pids]
+      if (!length(vals)) {
+        next
+      }
+      mean_evi <- mean(vals, na.rm = TRUE)
+      if (!is.finite(mean_evi)) {
+        next
+      }
+      er_i <- er_i + 1L
+      evi_rows[[er_i]] <- data.frame(
+        park_name = park_nm,
+        date = as.Date(d),
+        park_mean_evi = as.numeric(mean_evi),
+        stringsAsFactors = FALSE
+      )
+    }
+    if (isTRUE(verbose) &&
+          (di == 1L || di == length(dates) || di %% 10L == 0L)) {
+      elapsed <- proc.time()[["elapsed"]] - t0
+      message(
+        "Stress lookback fused ", di, "/", length(dates),
+        " dates (", round(elapsed, 1), "s)"
+      )
+    }
+  }
+  if (er_i < 1L) {
+    if (isTRUE(verbose)) {
+      message("build_park_monthly_delta_evi_series: no fused park means")
+    }
+    return(empty)
+  }
+  evi_all <- dplyr::bind_rows(evi_rows[seq_len(er_i)])
+
+  # Per-park calendar-month climatology → monthly_delta
+  split_evi <- split(evi_all, evi_all$park_name)
+  delta_parts <- lapply(names(split_evi), function(nm) {
+    part <- park_mean_monthly_delta_series(
+      split_evi[[nm]][, c("date", "park_mean_evi"), drop = FALSE]
+    )
+    if (!nrow(part)) {
+      return(NULL)
+    }
+    part$park_name <- nm
+    part[, c(
+      "park_name", "date", "park_mean_evi", "month_clim", "monthly_delta"
+    ), drop = FALSE]
+  })
+  out <- dplyr::bind_rows(delta_parts)
+  if (!nrow(out)) {
+    return(empty)
+  }
+  out <- out[order(out$park_name, as.Date(out$date)), , drop = FALSE]
+  rownames(out) <- NULL
+  if (isTRUE(verbose)) {
+    message(
+      "Stress lookback series: ",
+      length(unique(out$park_name)), " parks, ",
+      nrow(out), " park×date rows"
+    )
+  }
+  out
+}
+
 #' Age-class percentages for known-age cells + % censored (**E1** / **9A**).
 #'
 #' @param years_since_fire SpatRaster (years)

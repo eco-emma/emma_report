@@ -136,6 +136,9 @@ jobs:
       - name: Unit test EVI sensor fusion (W4.0)
         run: Rscript scripts/test_fuse_evi_sensors.R
 
+      - name: Unit test park manager KPIs (stress flag lookback helpers)
+        run: Rscript scripts/test_park_manager_kpis.R
+
       - name: Run targets pt 1
         run: |
           Sys.setenv(HOME = "/home/rstudio")
@@ -182,11 +185,19 @@ jobs:
           )
           # Quarto / website is isolated in targets-website.yml.
           # PR light CI skips all-history mean_evi/delta_evi (hundreds of
-          # parquet downloads); full builds on push/schedule still produce them.
+          # parquet downloads) and the 36-mo stress lookback series target
+          # (also VI-parquet heavy; command stubs empty when EMMA_CI_LIGHT=1,
+          # but exclude so it does not sit on the critical path). Full builds
+          # on push/schedule still produce them.
           ci_light <- identical(Sys.getenv("EMMA_CI_LIGHT"), "1")
           if (ci_light) {
             targets::tar_make(
-              names = !any_of(c("website", "mean_evi.tif", "delta_evi.tif"))
+              names = !any_of(c(
+                "website",
+                "mean_evi.tif",
+                "delta_evi.tif",
+                "park_monthly_delta_evi_series"
+              ))
             )
           } else {
             targets::tar_make(names = !any_of("website"))

@@ -21,13 +21,22 @@ stopifnot(nrow(daily_p) >= 1L, all(c("date", "value") %in% names(daily_p)))
 # Two stations → one row per date
 stopifnot(nrow(daily_p) == length(unique(dates)))
 
-layers <- weather_climatology_layers(daily_p, as_of = as_of, min_days_per_year = 60L)
+# Trailing 12-mo cumulative precip
+cum_p <- park_daily_trailing_sum(daily_p, min_days = 60L)
+stopifnot(nrow(cum_p) >= 1L)
+stopifnot(min(cum_p$date) >= min(daily_p$date) + 364L)
+# Cumulative should be much larger than typical daily
+stopifnot(median(cum_p$value) > median(daily_p$value) * 50)
+
+layers <- weather_climatology_layers(cum_p, as_of = as_of, min_days_per_year = 60L)
 stopifnot(isTRUE(layers$has_data))
 stopifnot(layers$window_end == as_of)
 stopifnot(layers$window_start == as_of - 364L)
 stopifnot(nrow(layers$current) >= 1L)
 stopifnot(nrow(layers$years) >= 1L)
 stopifnot(nrow(layers$envelope) >= 1L)
+stopifnot(is.finite(layers$n_hist_years), layers$n_hist_years >= 1L)
+stopifnot(!is.na(layers$record_start), !is.na(layers$record_end))
 # Current window x-axis spans trailing year, not calendar Jan–Dec only
 stopifnot(format(layers$window_start, "%m") != "01" ||
             format(layers$window_start, "%d") != "01" ||
@@ -44,14 +53,18 @@ stopifnot(all(layers$envelope$p25 <= layers$envelope$p50, na.rm = TRUE))
 stopifnot(all(layers$envelope$p50 <= layers$envelope$p75, na.rm = TRUE))
 stopifnot(all(layers$envelope$p75 <= layers$envelope$p95, na.rm = TRUE))
 
+# Fuller history: ~6 calendar years of daily data → several prior slices
+stopifnot(layers$n_hist_years >= 3L)
+
 daily_t <- park_daily_weather(fw, "temp_c")
 layers_t <- weather_climatology_layers(daily_t, as_of = as_of)
 stopifnot(isTRUE(layers_t$has_data), nrow(layers_t$envelope) >= 1L)
+stopifnot(layers_t$n_hist_years >= 3L)
 
 if (requireNamespace("ggplot2", quietly = TRUE)) {
   p <- plot_weather_climatology(
     layers,
-    ylab = "Precipitation (mm)",
+    ylab = "Cumulative precip (mm / 12 mo)",
     title = "test",
     log1p_y = TRUE
   )
@@ -70,6 +83,11 @@ empty <- weather_climatology_layers(
   data.frame(date = as.Date(character()), value = numeric()),
   as_of = as_of
 )
-stopifnot(!isTRUE(empty$has_data))
+stopifnot(!isTRUE(empty$has_data), identical(empty$n_hist_years, 0L))
+
+empty_cum <- park_daily_trailing_sum(
+  data.frame(date = as.Date(character()), value = numeric())
+)
+stopifnot(nrow(empty_cum) == 0L)
 
 message("All weather climatology tests passed.")

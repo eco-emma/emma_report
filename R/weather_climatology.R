@@ -35,6 +35,70 @@ park_daily_weather <- function(focal_weather, value_col) {
     dplyr::arrange(.data$date)
 }
 
+#' Trailing 12-month cumulative sum of a daily series.
+#'
+#' For each date `d`, value = sum of daily values on `[d - 364, d]` (365 days
+#' inclusive). Days with no observation contribute 0 to the sum (GSOD often
+#' omits zero-precip days). Requires at least `min_days` finite daily values
+#' in the window; otherwise the cumulative for that date is NA.
+#'
+#' @param daily tibble from [park_daily_weather()]
+#' @param min_days minimum observed days in the trailing window
+#' @return tibble with `date`, `value` (cumulative mm)
+park_daily_trailing_sum <- function(daily, min_days = 60L) {
+  empty <- tibble::tibble(
+    date = as.Date(character()),
+    value = numeric()
+  )
+  if (!is.data.frame(daily) || nrow(daily) < 1L) {
+    return(empty)
+  }
+  if (!all(c("date", "value") %in% names(daily))) {
+    return(empty)
+  }
+  df <- daily
+  df$date <- as.Date(df$date)
+  df$value <- as.numeric(df$value)
+  df <- df[is.finite(df$value) & !is.na(df$date), , drop = FALSE]
+  if (!nrow(df)) {
+    return(empty)
+  }
+  df <- df[order(df$date), , drop = FALSE]
+  # Collapse duplicate dates
+  df <- df |>
+    dplyr::group_by(.data$date) |>
+    dplyr::summarise(value = sum(.data$value, na.rm = TRUE), .groups = "drop") |>
+    dplyr::arrange(.data$date)
+
+  date_min <- min(df$date)
+  date_max <- max(df$date)
+  # Full daily calendar so missing days count as 0 precip in the rolling sum
+  cal <- tibble::tibble(date = seq.Date(date_min, date_max, by = "day"))
+  cal <- dplyr::left_join(cal, df, by = "date")
+  cal$value[is.na(cal$value)] <- 0
+  # Observed-day count: original non-missing days only
+  obs <- rep(0, nrow(cal))
+  obs[cal$date %in% df$date] <- 1L
+
+  n <- nrow(cal)
+  win <- 365L
+  if (n < win) {
+    return(empty)
+  }
+  cs_val <- cumsum(cal$value)
+  cs_obs <- cumsum(obs)
+  # sum on [i-364, i] = cs[i] - cs[i-365] (with cs[0]=0)
+  idx <- seq.int(win, n)
+  prev <- idx - win
+  sum_val <- cs_val[idx] - c(0, cs_val)[prev + 1L]
+  sum_obs <- cs_obs[idx] - c(0, cs_obs)[prev + 1L]
+  ok <- sum_obs >= as.integer(min_days)
+  tibble::tibble(
+    date = cal$date[idx][ok],
+    value = as.numeric(sum_val[ok])
+  )
+}
+
 #' Shift dates back by an integer number of years (month-day preserving).
 shift_dates_years <- function(dates, n_years) {
   dates <- as.Date(dates)
@@ -58,10 +122,14 @@ shift_dates_years <- function(dates, n_years) {
 #' alignment. The current trailing window is the red line and is excluded from
 #' the historical envelope / grey lines.
 #'
-#' @param daily tibble from [park_daily_weather()]
+#' Uses every prior slice that meets `min_days_per_year` back to the earliest
+#' date in `daily` (capped at 80 offsets). Returns `n_hist_years` for captions.
+#'
+#' @param daily tibble from [park_daily_weather()] (or trailing-sum series)
 #' @param as_of Date; window end (latest weather date)
 #' @param min_days_per_year minimum non-NA days for a historical slice to keep
-#' @return list with `years`, `envelope`, `current`, window dates, `has_data`
+#' @return list with `years`, `envelope`, `current`, window dates, `has_data`,
+#'   `n_hist_years`, `record_start`, `record_end`
 weather_climatology_layers <- function(daily,
                                        as_of = Sys.Date(),
                                        min_days_per_year = 60L) {
@@ -92,7 +160,10 @@ weather_climatology_layers <- function(daily,
     window_start = window_start,
     window_end = window_end,
     as_of = as_of,
-    has_data = FALSE
+    has_data = FALSE,
+    n_hist_years = 0L,
+    record_start = as.Date(NA),
+    record_end = as.Date(NA)
   )
   if (!is.data.frame(daily) || nrow(daily) < 1L) {
     return(out)
@@ -108,6 +179,9 @@ weather_climatology_layers <- function(daily,
   if (!nrow(df)) {
     return(out)
   }
+
+  out$record_start <- min(df$date)
+  out$record_end <- max(df$date)
 
   ref_dates <- seq.Date(window_start, window_end, by = "day")
   value_by_date <- stats::setNames(df$value, as.character(df$date))
@@ -158,6 +232,7 @@ weather_climatology_layers <- function(daily,
   if (length(hist_rows) >= 1L) {
     out$years <- dplyr::bind_rows(hist_rows) |>
       dplyr::arrange(.data$year_offset, .data$plot_date)
+    out$n_hist_years <- length(unique(out$years$year_offset))
     out$envelope <- out$years |>
       dplyr::group_by(.data$plot_date) |>
       dplyr::summarise(
@@ -205,10 +280,28 @@ plot_weather_climatology <- function(layers,
     identity
   }
 
+  subtitle <- NULL
+  n_hist <- suppressWarnings(as.integer(layers$n_hist_years))
+  if (length(n_hist) == 1L && is.finite(n_hist) && n_hist >= 1L) {
+    rs <- layers$record_start
+    re <- layers$record_end
+    if (!is.null(rs) && !is.null(re) && !is.na(rs) && !is.na(re)) {
+      subtitle <- sprintf(
+        "Envelope from %d prior 12-mo slices (record %s–%s)",
+        n_hist,
+        format(as.Date(rs), "%Y"),
+        format(as.Date(re), "%Y")
+      )
+    } else {
+      subtitle <- sprintf("Envelope from %d prior 12-mo slices", n_hist)
+    }
+  }
+
   p <- ggplot2::ggplot() +
     ggplot2::theme_bw() +
     ggplot2::labs(
       title = title,
+      subtitle = subtitle,
       x = NULL,
       y = ylab
     ) +

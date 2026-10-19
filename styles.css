@@ -1,8 +1,8 @@
 /* css styles */
 
-/* Small green Font Awesome leaf markers for iNat invasives (~size 0.3). */
+/* Small green Font Awesome leaf markers for iNat invasives (~scale 0.2). */
 .awesome-marker.awesome-marker-icon-green {
-  transform: scale(0.3);
+  transform: scale(0.2);
   transform-origin: 16px 41px;
 }
 

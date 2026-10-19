@@ -31,7 +31,7 @@ get_release_updated_at <- function(tag, repo = ENVDATA_REPO) {
     jsonlite::fromJSON(tf, simplifyVector = TRUE),
     error = function(e) NULL
   )
-  if (is.null(rel)) {
+  if (is.null(rel) || !is.list(rel)) {
     return(list(tag = tag, updated_at = NA_character_, published_at = NA_character_))
   }
   list(
@@ -41,31 +41,91 @@ get_release_updated_at <- function(tag, repo = ENVDATA_REPO) {
   )
 }
 
+#' Empty freshness payload (soft-fail default).
+.empty_data_freshness <- function() {
+  list(
+    stac_item_id = NA_character_,
+    stac_datetime = NA_character_,
+    stac_href = NA_character_,
+    releases = data.frame(
+      tag = character(),
+      updated_at = character(),
+      published_at = character(),
+      stringsAsFactors = FALSE
+    ),
+    newest_release_tag = NA_character_,
+    newest_release_updated_at = NA_character_,
+    catalog_url = ENVDATA_STAC_CATALOG_URL
+  )
+}
+
 #' Latest VI STAC item datetime + id (soft-fail → NA).
+#'
+#' Never indexes empty `Filter(...)` / malformed `links` (list or data.frame).
 get_latest_vi_stac_datetime <- function() {
   out <- list(
     item_id = NA_character_,
     datetime = NA_character_,
     href = NA_character_
   )
-  item <- tryCatch(get_latest_vi_stac_item(), error = function(e) NULL)
-  if (is.null(item)) {
-    return(out)
-  }
-  props <- item$properties %||% list()
-  out$item_id <- as.character(item$id %||% NA_character_)
-  out$datetime <- as.character(props$datetime %||% NA_character_)
-  self_links <- Filter(
-    function(l) identical(l$rel, "self"),
-    item$links %||% list()
+  tryCatch(
+    {
+      item <- tryCatch(get_latest_vi_stac_item(), error = function(e) NULL)
+      if (is.null(item) || !is.list(item)) {
+        return(out)
+      }
+      props <- item$properties %||% list()
+      if (!is.list(props)) {
+        props <- list()
+      }
+      out$item_id <- as.character(item$id %||% NA_character_)
+      out$datetime <- as.character(props$datetime %||% NA_character_)
+      self_links <- .stac_links_with_rel(item$links, "self")
+      if (length(self_links) >= 1L) {
+        out$href <- as.character(self_links[[1]]$href %||% NA_character_)
+      }
+      out
+    },
+    error = function(e) out
   )
-  if (length(self_links) >= 1L) {
-    out$href <- as.character(self_links[[1]]$href %||% NA_character_)
+}
+
+#' Pick tag / timestamp of the newest non-NA POSIXct among release rows.
+.newest_release_signal <- function(releases_df) {
+  empty <- list(tag = NA_character_, updated_at = NA_character_)
+  if (!is.data.frame(releases_df) || nrow(releases_df) < 1L) {
+    return(empty)
   }
-  out
+  parsed <- suppressWarnings(
+    as.POSIXct(
+      releases_df$updated_at,
+      format = "%Y-%m-%dT%H:%M:%SZ",
+      tz = "UTC"
+    )
+  )
+  # Fallback when format= misses (e.g. fractional seconds); still avoid hard fail.
+  if (all(is.na(parsed))) {
+    parsed <- suppressWarnings(as.POSIXct(releases_df$updated_at, tz = "UTC"))
+  }
+  ok <- which(!is.na(parsed))
+  if (length(ok) < 1L) {
+    return(empty)
+  }
+  i <- ok[[which.max(parsed[ok])]]
+  if (length(i) != 1L || is.na(i) || i < 1L || i > nrow(releases_df)) {
+    return(empty)
+  }
+  tag <- releases_df$tag[[i]]
+  list(
+    tag = if (length(tag) == 1L) as.character(tag) else NA_character_,
+    updated_at = format(parsed[[i]], "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+  )
 }
 
 #' Assemble freshness metadata for Quarto footers.
+#'
+#' Soft-fails to NA fields on network / STAC / release malformation — never
+#' throws subscript-out-of-bounds into the targets pipeline.
 #'
 #' @param tags Character vector of emma_envdata release tags to probe.
 compute_data_freshness <- function(tags = c(
@@ -76,37 +136,34 @@ compute_data_freshness <- function(tags = c(
                                      "vi_viirs_raster",
                                      "vi_modis_terra_raster"
                                    )) {
-  stac <- get_latest_vi_stac_datetime()
-  releases <- lapply(tags, get_release_updated_at)
-  releases_df <- dplyr::bind_rows(lapply(releases, function(x) {
-    data.frame(
-      tag = x$tag,
-      updated_at = x$updated_at,
-      published_at = x$published_at,
-      stringsAsFactors = FALSE
-    )
-  }))
-  # Prefer the newest release updated_at among probed tags as a single signal.
-  parsed <- suppressWarnings(as.POSIXct(releases_df$updated_at, tz = "UTC"))
-  newest <- if (any(!is.na(parsed))) {
-    releases_df$tag[[which.max(parsed)]]
-  } else {
-    NA_character_
-  }
-  newest_at <- if (any(!is.na(parsed))) {
-    format(max(parsed, na.rm = TRUE), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
-  } else {
-    NA_character_
-  }
+  tryCatch(
+    {
+      stac <- get_latest_vi_stac_datetime()
+      releases <- lapply(as.character(tags %||% character()), get_release_updated_at)
+      releases_df <- dplyr::bind_rows(lapply(releases, function(x) {
+        data.frame(
+          tag = as.character(x$tag %||% NA_character_),
+          updated_at = as.character(x$updated_at %||% NA_character_),
+          published_at = as.character(x$published_at %||% NA_character_),
+          stringsAsFactors = FALSE
+        )
+      }))
+      if (!is.data.frame(releases_df) || nrow(releases_df) < 1L) {
+        releases_df <- .empty_data_freshness()$releases
+      }
+      newest <- .newest_release_signal(releases_df)
 
-  list(
-    stac_item_id = stac$item_id,
-    stac_datetime = stac$datetime,
-    stac_href = stac$href,
-    releases = releases_df,
-    newest_release_tag = newest,
-    newest_release_updated_at = newest_at,
-    catalog_url = ENVDATA_STAC_CATALOG_URL
+      list(
+        stac_item_id = stac$item_id %||% NA_character_,
+        stac_datetime = stac$datetime %||% NA_character_,
+        stac_href = stac$href %||% NA_character_,
+        releases = releases_df,
+        newest_release_tag = newest$tag,
+        newest_release_updated_at = newest$updated_at,
+        catalog_url = ENVDATA_STAC_CATALOG_URL
+      )
+    },
+    error = function(e) .empty_data_freshness()
   )
 }
 

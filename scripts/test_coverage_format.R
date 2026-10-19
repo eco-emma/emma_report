@@ -52,4 +52,58 @@ stopifnot(grepl("page built", b))
 pb <- format_freshness_badge_park_md(fresh)
 stopifnot(grepl("\\.\\./data.html", pb))
 
+# --- STAC links hardening (no network): empty / data.frame / no-self never OOB ---
+stopifnot(length(.stac_normalize_links(NULL)) == 0L)
+stopifnot(length(.stac_normalize_links(list())) == 0L)
+stopifnot(length(.stac_links_with_rel(list(), "self")) == 0L)
+
+# List-of-lists shape (simplifyVector = FALSE), no self link — the #49/#50 crash.
+links_list <- list(
+  list(rel = "collection", href = "https://example.invalid/collection.json"),
+  list(rel = "root", href = "https://example.invalid/catalog.json"),
+  list(rel = "parent", href = "https://example.invalid/collection.json")
+)
+stopifnot(length(.stac_links_with_rel(links_list, "self")) == 0L)
+stopifnot(length(.stac_links_with_rel(links_list, "collection")) == 1L)
+
+# data.frame shape (simplifyVector = TRUE) — Filter-on-columns footgun.
+links_df <- data.frame(
+  rel = c("collection", "item", "item"),
+  href = c(
+    "https://example.invalid/collection.json",
+    "https://example.invalid/vi_20200101.json",
+    "https://example.invalid/vi_20260921.json"
+  ),
+  stringsAsFactors = FALSE
+)
+items <- .stac_links_with_rel(links_df, "item")
+stopifnot(length(items) == 2L)
+stopifnot(identical(items[[2]]$href, "https://example.invalid/vi_20260921.json"))
+
+# Newest-release picker: all-NA / empty never subscript-OOB.
+sig_empty <- .newest_release_signal(data.frame(
+  tag = character(),
+  updated_at = character(),
+  published_at = character(),
+  stringsAsFactors = FALSE
+))
+stopifnot(is.na(sig_empty$tag), is.na(sig_empty$updated_at))
+
+sig_na <- .newest_release_signal(data.frame(
+  tag = c("stac", "fireage"),
+  updated_at = c(NA_character_, NA_character_),
+  published_at = c(NA_character_, NA_character_),
+  stringsAsFactors = FALSE
+))
+stopifnot(is.na(sig_na$tag), is.na(sig_na$updated_at))
+
+sig_ok <- .newest_release_signal(data.frame(
+  tag = c("stac", "static_data"),
+  updated_at = c("2026-10-07T20:05:06Z", "2026-10-17T02:41:29Z"),
+  published_at = c(NA_character_, NA_character_),
+  stringsAsFactors = FALSE
+))
+stopifnot(identical(sig_ok$tag, "static_data"))
+stopifnot(identical(sig_ok$updated_at, "2026-10-17T02:41:29Z"))
+
 message("All coverage/freshness formatter tests passed.")

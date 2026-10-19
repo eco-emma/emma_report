@@ -319,19 +319,77 @@ read_json_url <- function(url) {
   jsonlite::fromJSON(tf, simplifyVector = FALSE)
 }
 
+#' Normalize STAC/JSON `links` to a list of `{rel, href}` lists.
+#'
+#' `jsonlite::fromJSON(..., simplifyVector = FALSE)` yields a list of lists;
+#' `simplifyVector = TRUE` often yields a data.frame. Callers must not
+#' `Filter(...)[[1]]` on either shape without a length guard — empty Filter
+#' results are the classic "subscript out of bounds" footgun.
+.stac_normalize_links <- function(links) {
+  if (is.null(links) || length(links) == 0L) {
+    return(list())
+  }
+  if (is.data.frame(links)) {
+    n <- nrow(links)
+    if (!n) {
+      return(list())
+    }
+    rel <- if ("rel" %in% names(links)) as.character(links$rel) else rep(NA_character_, n)
+    href <- if ("href" %in% names(links)) as.character(links$href) else rep(NA_character_, n)
+    length(rel) <- n
+    length(href) <- n
+    return(lapply(seq_len(n), function(i) {
+      list(rel = rel[[i]], href = href[[i]])
+    }))
+  }
+  if (!is.list(links)) {
+    return(list())
+  }
+  out <- list()
+  for (l in links) {
+    if (!is.list(l)) {
+      next
+    }
+    out[[length(out) + 1L]] <- list(
+      rel = as.character(l$rel %||% NA_character_),
+      href = as.character(l$href %||% NA_character_)
+    )
+  }
+  out
+}
+
+#' Links whose `rel` matches (after [.stac_normalize_links()]).
+.stac_links_with_rel <- function(links, rel) {
+  Filter(
+    function(l) identical(as.character(l$rel %||% NA_character_), as.character(rel)),
+    .stac_normalize_links(links)
+  )
+}
+
 #' Latest VI STAC item (MODIS+VIIRS composite) from the published catalog
 get_latest_vi_stac_item <- function(collection_url = NULL) {
   if (is.null(collection_url)) {
     collection_url <- envdata_release_url(ENVDATA_RELEASE_TAGS$stac_vi, "vi_collection.json")
   }
   collection <- read_json_url(collection_url)
-  item_links <- Filter(function(l) identical(l$rel, "item"), collection$links)
+  item_links <- .stac_links_with_rel(collection$links, "item")
   if (length(item_links) == 0L) {
     stop("No VI STAC items found at ", collection_url)
   }
-  hrefs <- vapply(item_links, function(l) l$href, character(1))
+  hrefs <- vapply(item_links, function(l) {
+    h <- l$href
+    if (length(h) != 1L || is.na(h) || !nzchar(h)) {
+      NA_character_
+    } else {
+      as.character(h)
+    }
+  }, character(1))
+  hrefs <- hrefs[!is.na(hrefs) & nzchar(hrefs)]
+  if (length(hrefs) == 0L) {
+    stop("No VI STAC item hrefs found at ", collection_url)
+  }
   # Item IDs / filenames are vi_YYYYMMDD.json — last lexical href is latest when sorted
-  latest_href <- sort(hrefs)[length(hrefs)]
+  latest_href <- sort(hrefs)[[length(hrefs)]]
   read_json_url(latest_href)
 }
 

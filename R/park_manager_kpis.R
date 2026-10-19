@@ -4,7 +4,7 @@
 #'   (threshold = −k × CV, k = 0.25; N = 3 consecutive composites).
 #' Rank **4** / **7A**: iNat invasive watch list (counts + caveats only).
 #' Rank **5**: 12-month precip/temp anomaly vs long mean at nearest station.
-#' Rank **6**: fire-outline age bins for leaflet chronological filtering.
+#' Rank **6**: fire-history outline symbology (single leaflet layer).
 #' **E1**: age-class strip (&lt;5 / 5–10 / 10–20 / &gt;20 + % censored).
 #' **E2**: continuous years-since-fire × EVI scatter points (known ages only).
 
@@ -502,7 +502,7 @@ weather_12mo_anomaly <- function(focal_weather,
   out
 }
 
-#' Fire outline age-bin label for leaflet groups (rank **6**).
+#' Fire outline age-bin label (symbology helper; map uses one "Fire History" layer).
 fire_outline_age_bin <- function(years) {
   y <- as.numeric(years)
   dplyr::case_when(
@@ -520,6 +520,24 @@ FIRE_OUTLINE_GROUPS <- c(
   "Burns 10–20 y",
   "Burns >20 y"
 )
+
+#' Single leaflet overlay group for all burn-outline polygons.
+FIRE_HISTORY_GROUP <- "Fire History"
+
+#' Discrete stroke colors for fire-history age bins (one layer, multi-style).
+fire_history_outline_color <- function(years) {
+  bin <- fire_outline_age_bin(years)
+  cols <- c(
+    "Burns <5 y" = "#b30000",
+    "Burns 5–10 y" = "#e34a33",
+    "Burns 10–20 y" = "#fc8d59",
+    "Burns >20 y" = "#fdbb84",
+    "Burns (age unknown)" = "#636363"
+  )
+  out <- unname(cols[bin])
+  out[is.na(out)] <- "#636363"
+  out
+}
 
 #' Format rank-3 KPI + stress strip (Markdown).
 format_delta_evi_kpi_md <- function(park_mean_delta,

@@ -26,7 +26,8 @@ Sources for maps and figures on this site are derived in `emma_report` from publ
 | Product | What you see | Typical as-of |
 |---|---|---|
 | Fused EVI | Latest greenness + monthly / long-term ΔEVI on park maps | `r format(most_recent_evi_date, "%Y-%m-%d")` |
-| Years since fire | Raster + burn outlines; true ages (not collapsed to 20) | `fireage` release snapshot |
+| Years since fire | Continuous fire-age raster; true ages (not collapsed to 20) | `fireage` release snapshot |
+| Fire History / Veld Age | Burn outlines (one layer) + filled veld-age polygons on park maps | `fireage` release snapshot |
 | Invasives | Recent iNaturalist records in parks + 10 km buffer (small leaf markers) | `inat_data` |
 | Weather | Nearest GSOD station climate when rows exist for the park | `weather_data` |
 

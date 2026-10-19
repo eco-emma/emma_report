@@ -21,12 +21,16 @@ stopifnot(st$n_below == 3L)
 st_green <- evaluate_stress_flag(c(0.1, 0.2, 0.15, 0.3), k = 0.25, n = 3L)
 stopifnot(!isTRUE(st_green$flagged))
 
-# --- Fire age bins -----------------------------------------------------------
+# --- Fire age bins / Fire History symbology ----------------------------------
 stopifnot(identical(fire_outline_age_bin(2), "Burns <5 y"))
 stopifnot(identical(fire_outline_age_bin(7), "Burns 5–10 y"))
 stopifnot(identical(fire_outline_age_bin(15), "Burns 10–20 y"))
 stopifnot(identical(fire_outline_age_bin(25), "Burns >20 y"))
 stopifnot("Burns <5 y" %in% FIRE_OUTLINE_GROUPS)
+stopifnot(identical(FIRE_HISTORY_GROUP, "Fire History"))
+stopifnot(identical(fire_history_outline_color(2), "#b30000"))
+stopifnot(identical(fire_history_outline_color(25), "#fdbb84"))
+stopifnot(length(fire_history_outline_color(c(2, 7, 15))) == 3L)
 
 # --- Invasive watch list -----------------------------------------------------
 watch <- invasive_watch_list(data.frame(

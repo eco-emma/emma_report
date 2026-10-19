@@ -136,6 +136,9 @@ jobs:
       - name: Unit test EVI sensor fusion (W4.0)
         run: Rscript scripts/test_fuse_evi_sensors.R
 
+      - name: Unit test park manager KPIs (stress flag lookback helpers)
+        run: Rscript scripts/test_park_manager_kpis.R
+
       - name: Run targets pt 1
         run: |
           Sys.setenv(HOME = "/home/rstudio")

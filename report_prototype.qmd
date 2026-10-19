@@ -49,6 +49,12 @@ tar_load(delta_evi.tif)
 #tar_load(quarterly_delta_evi.tif)
 tar_load(stations)
 tar_load(inat_data)
+tar_load(coverage_metrics)
+tar_load(data_freshness)
+
+source("R/envdata_contract.R", local = FALSE)
+source("R/coverage_metrics.R", local = FALSE)
+source("R/data_freshness.R", local = FALSE)
 
 # Real weather gate (do not overwrite with FALSE after this — that was the
 # #39/#40 merge bug that skipped station chunks and left focal_stations_sf unset).
@@ -1281,7 +1287,7 @@ spi2_xts= xts(select(spi2,-date),order.by=spi2$date)
 
 # Report Metadata
 
-This table summarizes the date this report was generated and the most recent observation for each data type.
+This table summarizes the date this report was generated and the most recent observation for each data type. Site products are derived from [`emma_envdata`](https://github.com/eco-emma/emma_envdata) releases and STAC — see [Data sources & downloads →](../data.html).
 
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated
@@ -1308,9 +1314,9 @@ knitr::kable(dates)
  
 ```
 
-```{r page-built-footer, echo=FALSE, results='asis'}
-cat(sprintf(
-  "\n\n---\n\n*Page last built: %s UTC*\n",
-  format(as.POSIXlt(Sys.time(), tz = "UTC"), "%Y-%m-%d %H:%M:%S")
-))
+```{r park-coverage-freshness-footer, echo=FALSE, results='asis'}
+# Park panel coverage (4B / 12A) + rank 7 freshness; Data page link in strip.
+park_name <- params$focal_park_name
+cat(format_coverage_park_md(coverage_metrics, park_name))
+cat(format_freshness_badge_park_md(data_freshness))
 ```

@@ -43,7 +43,13 @@ tar_load(monthly_delta_evi.tif)
 tar_load(mean_evi.tif)
 tar_load(delta_evi.tif)
 tar_load(weather_data)
+tar_load(coverage_metrics)
+tar_load(data_freshness)
 tar_load(report_qmd_dir) # forces park qmds to run first
+
+source("R/envdata_contract.R", local = FALSE)
+source("R/coverage_metrics.R", local = FALSE)
+source("R/data_freshness.R", local = FALSE)
   
 ```
 
@@ -170,7 +176,7 @@ years_since_fire |>
 
 # Data Overview
 
-See table below for dates each dataset was last updated and download links.
+See the [Data](data.qmd) page for STAC links, GitHub release tags, coverage definitions, and COG how-to. Summary of as-of dates:
 
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated
@@ -196,9 +202,8 @@ knitr::kable(dates)
  
 ```
 
-```{r page-built-footer, echo=FALSE, results='asis'}
-cat(sprintf(
-  "\n\n---\n\n*Page last built: %s UTC*\n",
-  format(as.POSIXlt(Sys.time(), tz = "UTC"), "%Y-%m-%d %H:%M:%S")
-))
+```{r coverage-freshness-footer, echo=FALSE, results='asis'}
+# Quiet assessment strip + freshness badge — not the hero (10B / 12A / rank 7)
+cat(format_coverage_domain_md(coverage_metrics))
+cat(format_freshness_badge_md(data_freshness))
 ```

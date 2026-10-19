@@ -5,3 +5,31 @@
   transform: scale(0.3);
   transform-origin: 16px 41px;
 }
+
+/* Quiet assessment / freshness footers (not hero) — P0 coverage + rank 7 */
+.emma-coverage-strip,
+.emma-freshness-badge {
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: #3a3a3a;
+  background: #f3f4f6;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.emma-coverage-park {
+  margin-top: 0.75rem;
+}
+
+.emma-saeon-footer {
+  margin-top: 2rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: center;
+}
+
+.emma-saeon-footer a {
+  color: #4b5563;
+}

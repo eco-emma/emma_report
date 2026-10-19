@@ -572,10 +572,9 @@ format_delta_evi_kpi_md <- function(park_mean_delta,
 #' Format invasive watch list + caveats (rank **4**).
 format_invasive_watch_md <- function(watch_df) {
   caveat <- paste0(
-    "*Caveats: iNaturalist opportunistic records in the park + 1 km buffer ",
-    "(recent ~900 days on the map). Not a systematic survey or clearing ",
-    "priority score — counts reflect observer effort as much as invasion ",
-    "pressure. See [Data sources](../data.html).*\n\n"
+    "*iNaturalist opportunistic records in the park + 1 km buffer ",
+    "(recent ~900 days on the map). Counts reflect observer effort as well ",
+    "as invasion pressure. See [Data](../data.html).*\n\n"
   )
   if (!is.data.frame(watch_df) || nrow(watch_df) < 1L) {
     return(paste0(

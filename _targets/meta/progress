@@ -3,8 +3,7 @@ env_files|stem|env_files|0|skipped
 protected_areas|stem|protected_areas|0|skipped
 spatial_outputs|stem|spatial_outputs|0|skipped
 model_results|stem|model_results|0|skipped
-report_location|stem|report_location|0|dispatched
-report_location|stem|report_location|0|completed
+report_location|stem|report_location|0|skipped
 data_freshness|stem|data_freshness|0|skipped
 weather_data|stem|weather_data|0|skipped
 stations|stem|stations|0|skipped

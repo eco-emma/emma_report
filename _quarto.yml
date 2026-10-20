@@ -4,6 +4,7 @@ project:
     - "*.qmd"
     - "reports/*.qmd"
     - "!report_prototype.qmd" # template only — park copies live under reports/
+    - "!model_summary.qmd" # hidden until model page returns (keep file)
   execute-dir: "project"
   output-dir: "docs"
 
@@ -13,18 +14,25 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - href: index.html#parks-and-regional-veld-age
+        text: Park Reports
       - href: data.qmd
         text: Data
       - href: about.qmd
         text: About
-      - href: model_summary.qmd
-        text: Model Summary
-      - href: index.html#park-level-summaries
-        text: Park Reports
+      # - href: model_summary.qmd
+      #   text: Model Summary
+  page-footer:
+    center: |
+      <span class="emma-site-footer">Supported by NASA grant <strong>80NSSC21K1183</strong>
+      (<em>Near-Real-Time Forecasting and Change Detection for a Fire-Prone Shrubland Ecosystem</em>).
+      Developed with the <strong>South African Environmental Observation Network (SAEON)</strong>;
+      Eco-EMMA stewardship shared with SAEON and the University of Cape Town.
+      NASA · SAEON · University at Buffalo · University of Cape Town ·
+      <a href="about.html#funding">Funding &amp; partners →</a></span>
 
 format:
   html:
     theme: cosmo
     css: styles.css
     toc: true
-

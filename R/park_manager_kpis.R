@@ -984,14 +984,14 @@ format_delta_evi_kpi_md <- function(park_mean_delta,
                                     evi_as_of = NULL,
                                     lookback_months = STRESS_SERIES_MONTHS) {
   delta_txt <- if (is.finite(park_mean_delta)) {
-    sprintf("%+.3f", park_mean_delta)
+    sprintf("**%+.3f**", park_mean_delta)
   } else {
-    "unavailable"
+    "**unavailable**"
   }
   as_of_txt <- if (!is.null(evi_as_of) && !is.na(as.Date(evi_as_of))) {
-    paste0(" (composite ", format(as.Date(evi_as_of), "%Y-%m-%d"), ")")
+    paste0("composite ", format(as.Date(evi_as_of), "%Y-%m-%d"))
   } else {
-    ""
+    NULL
   }
   flag_txt <- if (isTRUE(stress$flagged)) {
     '<span class="emma-stress-flag emma-stress-on">Stress flag ON</span>'
@@ -1000,27 +1000,30 @@ format_delta_evi_kpi_md <- function(park_mean_delta,
   } else {
     '<span class="emma-stress-flag emma-stress-na">Stress flag unavailable</span>'
   }
+  # Manager-first line; formula / lookback detail lives on Data.
   thr_txt <- if (is.finite(stress$threshold) && is.finite(stress$cv)) {
     sprintf(
       paste0(
-        "Threshold = −%.2f × CV = %.4f ",
-        "(CV = sd(Δ)/mean(|Δ|) over last %d months of park-mean monthly ΔEVI; ",
-        "N = %d consecutive composites below cut)."
+        "Flag turns on when the park mean stays below −%.2f × its recent ",
+        "variability for %d composites in a row. Details: [Data](../data.html)."
       ),
       stress$k,
-      stress$threshold,
-      as.integer(lookback_months),
       stress$n
     )
   } else {
     paste0(
-      "Stress flag needs a park-mean monthly ΔEVI series ",
-      "(VI parquet lookback); KPI uses the latest monthly_delta_evi raster."
+      "Need a longer monthly series to score the flag; value above is from ",
+      "the latest map layer."
     )
+  }
+  mid <- if (!is.null(as_of_txt)) {
+    paste0(delta_txt, " · ", as_of_txt, " · ", flag_txt)
+  } else {
+    paste0(delta_txt, " · ", flag_txt)
   }
   paste0(
     '<div class="emma-kpi-strip" markdown="1">\n\n',
-    "**Park-mean monthly ΔEVI** — ", delta_txt, as_of_txt, " · ", flag_txt, "\n\n",
+    "**Park-mean monthly ΔEVI** — ", mid, "\n\n",
     "*", thr_txt, "*\n\n",
     "</div>\n"
   )

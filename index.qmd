@@ -5,17 +5,9 @@ title-block-banner: img/banner.jpeg
 title-block-banner-color: "#FFFFFF"
 ---
 
-# Summary
+EMMA is a decision-support site for protected areas in South Africa’s Cape Floristic Region—a Global Biodiversity Hotspot and UNESCO World Heritage Site (~20% of Africa’s plant diversity) where fire, climate, and land use shape fynbos. It provides up-to-date regional summaries and park-level reports on vegetation condition, anomalies, fire history, and veld age, in partnership with SAEON.
 
-The EMMA project is building new tools to monitor the health of shrubland ecosystems in near real-time. Focusing on the fire-prone Cape Floristic Region of South Africa—a biodiversity hotspot—our system combines satellite data, field observations, and modeling to track changes in vegetation, identify threats like fires or invasive species, and support better conservation decisions. In partnership with the South African Environmental Observation Network (SAEON), EMMA aims to provide reliable, up-to-date information that helps protect these critical landscapes.
-
-# Cape Floristic Region
-
-The EMMA project focuses on the Cape Floristic Region of South Africa — one of the most biologically diverse and ecologically important areas on Earth. Despite covering less than 0.5% of Africa’s land area, this region holds over 20% of the continent’s plant species, many of which are found nowhere else.
-
-This unique shrubland ecosystem, known locally as fynbos, is shaped by fire, climate, and human activity. It is a UNESCO World Heritage Site and a Global Biodiversity Hotspot, but faces growing threats from climate change, land use change, and invasive species.
-
-By combining Earth observations with ecological models, EMMA supports real-time monitoring and decision-making to help protect and manage this remarkable landscape.
+Open a park on the map below, or compare anomalies and veld age across parks.
 
 ```{r, echo=F, message=F,include=F, results="hide", eval=T}
 #description: Modeling vegetation postfire recovery data
@@ -55,7 +47,9 @@ source("R/park_manager_kpis.R", local = FALSE)
   
 ```
 
-# Park-level Summaries
+# Parks and regional veld age
+
+Regional veld age (years since last known fire; color scale capped at 20 for display). Click a park outline for the full report—greenness, fire history, invasives, and climate.
 
 ```{r, echo=F}
   base_url <- "https://adamwilsonlab.github.io/emma_report/reports/"
@@ -85,8 +79,6 @@ source("R/park_manager_kpis.R", local = FALSE)
 
 
 ```
-
-Click on a park below to view park specific reports.
 
 ```{r park_map, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
@@ -144,7 +136,7 @@ index_map
 
 ```
 
-# Regional Overview
+# Vegetation anomalies by park
 
 ```{r, echo=F, warning=F}
 
@@ -158,7 +150,7 @@ protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_are
 
 ```
 
-```{r, echo=F, warning=F,fig.cap="Median value of the spatial vegetation anomalies of the past month compared to the fuse-then-mean for the same calendar month (multi-sensor EVI with VIIRS→Terra→Aqua fill). High values indicate higher than normal vegetation biomass while low values represent less vegetation than typical for this region. Parks are ordered from low to high. Click on the park in the map to see more detailed information."}
+```{r, echo=F, warning=F,fig.cap="Median monthly ΔEVI by park—higher = greener than typical for this month. Parks ordered low to high; open a park on the map for detail. Definitions: Data."}
 
 protected_areas_monthly_delta_evi |> 
   filter(!is.na(Q50)) |> 
@@ -181,7 +173,7 @@ protected_areas_monthly_delta_evi |>
 ```
 
 
-# Stand Age distributions
+# Veld age by park
 
 ```{r, echo=F, warning=F}
 # Layer is named "Years" (see get_years_since_fire.tif); rename by position.
@@ -213,9 +205,9 @@ years_since_fire |>
 
 ```
 
-# Data Overview
+# As-of dates
 
-See the [Data](data.qmd) page for STAC links, GitHub release tags, coverage definitions, and COG how-to. Summary of as-of dates:
+See the [Data](data.qmd) page for STAC links, GitHub release tags, coverage definitions, and COG how-to. Product as-of dates:
 
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated

@@ -861,7 +861,7 @@ park_map %>%
 
 ```
 
-Figure 1. Leaflet map with World Imagery as the default basemap. Overlays include an **EVI** group (**EVI (current)**, **ΔEVI (monthly)**, **ΔEVI (long term)**), the continuous **Veld Age (years)** raster, burn outlines in a single **Fire History** layer (age-bin stroke colors), park boundary as a thin dark green outline, and recent invasive species records (small green leaf markers, 10×10 px). Layer-control order matches draw order (top of the key paints on top). A combined hover tooltip reports current EVI, monthly and long-term ΔEVI, and years since last known fire under the cursor (NA as —). Multi-sensor EVI uses a VIIRS→Terra→Aqua fill (NOAA-20 → S-NPP → Terra → Aqua; first non-NA wins). NA in EVI / delta layers means all available sensors were missing after QA (e.g. water, cloud, snow). **ΔEVI (monthly)** = fused latest composite minus the fuse-then-mean of all composites in the same calendar month; **ΔEVI (long term)** = fused latest minus the fuse-then-mean over all available composite dates (all months). EVI data are from `r most_recent_evi_date` (STAC multi-sensor COGs). Fire age is derived from [`fireage_current.tif`](https://github.com/eco-emma/emma_envdata/releases/download/fireage/fireage_current.tif). The veld-age color scale is truncated at 20 years for readability (0 light → 20+ dark); the hover tooltip uses true ages. Right-censored / never-burned pixels are not collapsed to age 20 (see Fig. 2). Each legend appears only while its matching overlay is toggled on.
+Figure 1. Park map—toggle EVI, veld age, fire history, and invasives; hover for values. EVI as of `r most_recent_evi_date`. Definitions and downloads: [Data](../data.html).
 
 ```{r invasive-watch-list, echo=FALSE, results='asis'}
 cat(format_invasive_watch_md(invasive_watch))
@@ -1169,7 +1169,7 @@ cat(format_invasive_watch_md(invasive_watch))
 
 ```
 
-Figure 2. Top: Calendar-year burned area in the park from each cell's `last_burn_date` on the latest fireage snapshot (hectares; domain cell area × cell count). Empty panels show “No burns recorded in this window” when no known burns fall in the history. Middle: ridgeplot of **true** vegetation ages for cells with a known burn (ages older than 20 years appear when the data support them). Bottom: proportion of park cells that are right-censored / never-burned in the satellite+agency record (not assigned a fake age of 20). The barplot, ridgeline, and censored strip share the same continuous calendar-year x-axis (ticks aligned vertically via cowplot); the display window starts at **2000** (full historical series still used for the underlying tallies).
+Figure 2. Burned area by year; true veld-age distribution for known burns; share of park cells that are censored / never-burned. Display from 2000.
 
 ```{r age-class-strip, echo=FALSE, results='asis'}
 cat(format_age_class_md(age_class))

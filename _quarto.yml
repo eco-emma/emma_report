@@ -18,6 +18,8 @@ website:
         text: Park Reports
       - href: data.qmd
         text: Data
+      - href: feedback.qmd
+        text: Feedback
       - href: about.qmd
         text: About
       # - href: model_summary.qmd
@@ -29,7 +31,8 @@ website:
       Developed with the <strong>South African Environmental Observation Network (SAEON)</strong>;
       Eco-EMMA stewardship shared with SAEON and the University of Cape Town.
       NASA · SAEON · University at Buffalo · University of Cape Town ·
-      <a href="about.html#funding">Funding &amp; partners →</a></span>
+      <a href="about.html#funding">Funding &amp; partners →</a> ·
+      <a href="feedback.html">Feedback →</a></span>
 
 format:
   html:

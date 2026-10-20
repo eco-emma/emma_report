@@ -1,0 +1,28 @@
+---
+title: "Feedback"
+---
+
+Help keep park reports accurate. File feedback as a GitHub Issue on the [EMMA Report](https://github.com/eco-emma/emma_report) repository. A free GitHub account is required; there is no email form on this page.
+
+## How to file
+
+1. Open **[New issue](https://github.com/eco-emma/emma_report/issues/new/choose)** (template chooser).
+2. Pick **Data error / incorrect map or graph**, **Feature / future request**, or **General feedback**.
+3. Fill the form (park, figure, expected vs observed for data errors). Attach a screenshot when you can.
+4. Submit.
+
+If you do not have a GitHub account yet, [create a free account](https://github.com/signup), then return to the template chooser.
+
+## What happens next
+
+The EMMA team reviews issues on GitHub, may ask a follow-up question, and updates the site when a fix ships. Not every request will be built; **data errors are prioritized**. Issues are watched by the EMMA team (`emma_dev`). Maintainers triage work in the org GitHub Project; managers only need the Issues link above.
+
+## What not to submit
+
+- Personal or private landowner details, or GPS of sensitive species beyond what is already public on the map
+- Passwords, tokens, private URLs, or vulnerability details (use [GitHub Security Advisories](https://github.com/eco-emma/emma_report/security) if ever needed)
+- Grant administration or RF/UEI contacts
+
+## Data sources
+
+For how products are built and downloaded—and to cite or browse **original sensor and agency sources**—see [Data](data.qmd). This Feedback page is for what you **see on emma.eco**, not for filing tickets against upstream data agencies or pipeline repositories.

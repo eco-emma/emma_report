@@ -1,0 +1,47 @@
+name: Feature / future request
+description: Suggest a new capability or improvement for park managers on emma.eco.
+title: "[feature] "
+labels: ["feedback", "enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        EMMA is a **decision-support tool**. Describe what would help a management decision—not a research proposal.
+
+        Do not paste passwords, tokens, or private personal data.
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like EMMA to do?
+      description: One clear request in plain language
+    validations:
+      required: true
+  - type: input
+    id: parks
+    attributes:
+      label: Which parks / region?
+      description: Optional. Leave blank if the request is site-wide.
+      placeholder: e.g. Agulhas National Park, regional
+    validations:
+      required: false
+  - type: textarea
+    id: decision
+    attributes:
+      label: How would this help a management decision?
+      description: What would you do differently with this information or feature?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround today?
+      description: Optional. How do you handle this now (if at all)?
+    validations:
+      required: false
+  - type: textarea
+    id: sketch
+    attributes:
+      label: Sketch / screenshot
+      description: Optional. Drag-and-drop an image or describe a mock layout.
+    validations:
+      required: false

@@ -1,0 +1,79 @@
+name: Data error / incorrect map or graph
+description: Something on emma.eco looks wrong (map, graph, table, or as-of date).
+title: "[data] "
+labels: ["feedback", "data-error", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report what you see on **[emma.eco](https://emma.eco/)**. Do not paste passwords, tokens, or private personal data.
+
+        Original sensor and agency sources are documented on the [Data](https://emma.eco/data.html) page. This form is for **site products**, not a data-agency ticket system.
+  - type: input
+    id: park
+    attributes:
+      label: Park / area
+      description: e.g. Table Mountain National Park, a CapeNature reserve name, or "regional map"
+      placeholder: TMNP
+    validations:
+      required: true
+  - type: input
+    id: page-url
+    attributes:
+      label: Page URL
+      description: Full URL of the page where you saw the problem
+      placeholder: https://emma.eco/reports/...
+    validations:
+      required: true
+  - type: input
+    id: figure
+    attributes:
+      label: Figure / layer
+      description: Map layer, burn chart, weather panel, invasives, KPI name, or other figure
+      placeholder: e.g. Veld age layer, cumulative precip chart
+    validations:
+      required: true
+  - type: input
+    id: date-noticed
+    attributes:
+      label: Date noticed
+      description: When you noticed the problem (YYYY-MM-DD if possible)
+      placeholder: 2026-10-20
+    validations:
+      required: true
+  - type: input
+    id: as-of
+    attributes:
+      label: As-of date on page (if shown)
+      description: Helps us triage stale-data issues. Leave blank if none shown.
+      placeholder: e.g. 2026-09-15
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+      description: What should be true on the ground or in the product?
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed
+      description: What does the site show instead?
+    validations:
+      required: true
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drag-and-drop an image here if you can — strongly encouraged.
+    validations:
+      required: false
+  - type: checkboxes
+    id: follow-up
+    attributes:
+      label: Follow-up
+      options:
+        - label: You may follow up on this issue via my GitHub account
+          required: false

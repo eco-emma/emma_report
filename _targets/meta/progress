@@ -5,8 +5,8 @@ spatial_outputs|stem|spatial_outputs|0|skipped
 model_results|stem|model_results|0|skipped
 report_location|stem|report_location|0|skipped
 data_freshness|stem|data_freshness|0|skipped
-weather_data|stem|weather_data|0|skipped
-stations|stem|stations|0|skipped
+weather_release_fp|stem|weather_release_fp|0|dispatched
+weather_release_fp|stem|weather_release_fp|0|completed
 model_prediction|stem|model_prediction|0|skipped
 remnants|stem|remnants|0|skipped
 inat_data|stem|inat_data|0|skipped
@@ -17,6 +17,10 @@ park_fire_history|stem|park_fire_history|0|skipped
 park_monthly_delta_evi_series|stem|park_monthly_delta_evi_series|0|skipped
 report_qmd_dir|stem|report_qmd_dir|0|dispatched
 report_qmd_dir|stem|report_qmd_dir|0|completed
+weather_data|stem|weather_data|0|dispatched
+weather_data|stem|weather_data|0|completed
+stations|stem|stations|0|dispatched
+stations|stem|stations|0|completed
 fires_wgs|stem|fires_wgs|0|skipped
 most_recent_evi.tif|stem|most_recent_evi.tif|0|skipped
 most_recent_evi_date|stem|most_recent_evi_date|0|skipped

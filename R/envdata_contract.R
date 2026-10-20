@@ -181,6 +181,42 @@ list_release_assets <- function(repo = ENVDATA_REPO,
 
 `%||%` <- function(a, b) if (is.null(a) || length(a) == 0L) b else a
 
+#' Fingerprint named assets on a release tag (size + updated_at).
+#'
+#' Used as a targets dependency so republishing the same tag/filename
+#' invalidates downstream download targets. `tar_age` alone does not notice
+#' when GitHub release assets are replaced in place.
+#'
+#' @param tag Release tag (e.g. `weather_data`)
+#' @param files Character vector of asset basenames
+#' @param repo GitHub `owner/name`
+#' @return Single character string stable for equal size+updated_at
+envdata_assets_fingerprint <- function(tag,
+                                       files,
+                                       repo = ENVDATA_REPO) {
+  files <- unique(basename(as.character(files)))
+  if (length(files) < 1L || any(!nzchar(files))) {
+    stop("envdata_assets_fingerprint(): files must be non-empty", call. = FALSE)
+  }
+  assets <- list_release_assets(repo = repo, tag = tag)
+  parts <- vapply(files, function(f) {
+    row <- assets[assets$file_name == f, , drop = FALSE]
+    if (nrow(row) < 1L) {
+      stop(
+        "Release asset not found: ", repo, "@", tag, "/", f,
+        call. = FALSE
+      )
+    }
+    sprintf(
+      "%s|size=%s|updated=%s",
+      f,
+      as.character(row$size[[1L]]),
+      as.character(row$timestamp[[1L]])
+    )
+  }, character(1), USE.NAMES = FALSE)
+  paste(c(sprintf("%s@%s", repo, tag), parts), collapse = "\n")
+}
+
 #' Download one release asset with retries (replaces legacy robust_pb_download for envdata)
 download_envdata_asset <- function(tag,
                                    file,

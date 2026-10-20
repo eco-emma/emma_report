@@ -121,16 +121,31 @@ list(
   ),
 
 
-   # Weather SoT: emma_envdata@weather_data (download-only; missing asset fails)
-   tar_age(name = weather_data,
-           command = update_climate_data_gsod(temp_directory = temp_directory),
-           age = as.difftime(1, units = "days")
+   # Weather SoT: emma_envdata@weather_data (download-only; missing asset fails).
+   # Fingerprint size|updated_at so in-place release republishes invalidate the
+   # store — tar_age(1 day) kept stale short-record weather after a 2000+ republish
+   # (dispatch 39440943826: weather_data skipped; caption still "record 2022–2025").
+   tar_target(
+     name = weather_release_fp,
+     command = envdata_assets_fingerprint(
+       tag = ENVDATA_RELEASE_TAGS$weather,
+       files = ENVDATA_REPORT_ASSETS$weather$files
+     )
    ),
-
-tar_age(stations,
-        command = get_stations_data(temp_directory),
-        age = as.difftime(1, units = "days")
-),
+   tar_target(
+     name = weather_data,
+     command = {
+       weather_release_fp
+       update_climate_data_gsod(temp_directory = temp_directory)
+     }
+   ),
+   tar_target(
+     name = stations,
+     command = {
+       weather_release_fp
+       get_stations_data(temp_directory)
+     }
+   ),
 
 
 #   tar_age(name = most_recent_evi_file,

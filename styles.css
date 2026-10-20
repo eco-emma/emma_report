@@ -42,6 +42,37 @@
   color: #4b5563;
 }
 
+/* Site-wide grant / partner credit (P0 text; logos P1) */
+#quarto-footer {
+  border-top: 1px solid #d1d5db;
+  background: #f9fafb;
+}
+
+#quarto-footer .nav-footer {
+  padding-top: 0.75rem;
+  padding-bottom: 0.85rem;
+}
+
+.emma-site-footer {
+  display: block;
+  max-width: 52rem;
+  margin: 0 auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: #6b7280;
+  text-align: center;
+}
+
+.emma-site-footer a {
+  color: #4b5563;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.emma-site-footer a:hover {
+  color: #1f2937;
+}
+
 /* Manager KPI / watch / climate / age-class strips (ranks 3–5, E1) */
 .emma-kpi-strip,
 .emma-watch-list,

@@ -126,7 +126,7 @@ Notes for report readers:
 - EVI integer storage uses scale **0.01** (divide by 100), matching emma_envdata writers.
 - Multi-sensor EVI fusion (park maps / means): **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). Monthly and long-term means fuse per `(pid, date)` then `mean(..., na.rm = TRUE)`. If `vi_viirs_parquet` is unpublished, means fall back to MODIS Terra→Aqua only; `most_recent_evi.tif` still fuses available STAC COGs (including VIIRS rasters).
 - Remnants are read from `domain.tif` band `remnants` (no standalone `remnants.tif` on `static_data`).
-- Climate figures cite GSOD via emma_envdata `weather_data`.
+- Climate figures cite GSOD / NCEI (original source), not emma_envdata as attribution.
 
 ## CI `*-runs` cache (Phase D0 / R4b)
 

@@ -155,7 +155,7 @@ format_freshness_badge_md <- function(data_freshness,
   paste0(
     '<div class="emma-freshness-badge" markdown="1">\n\n',
     "**Data freshness** — STAC VI datetime: ", stac_txt,
-    " · envdata release updated: ", rel_txt,
+    " · product release updated: ", rel_txt,
     " · page built: ", .emma_escape(build_txt),
     " · [STAC catalog](", data_freshness$catalog_url, ")",
     " · [Data page](data.html)\n\n",

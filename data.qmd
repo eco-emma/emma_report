@@ -1,6 +1,6 @@
 ---
 title: "Data"
-subtitle: "Site products, STAC, and downloads"
+subtitle: "Original sources, STAC, and downloads"
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
@@ -19,19 +19,29 @@ tar_load(data_freshness)
 tar_load(most_recent_evi_date)
 ```
 
-Sources for maps and figures on this site are derived in `emma_report` from public [`eco-emma/emma_envdata`](https://github.com/eco-emma/emma_envdata) GitHub Releases and the STAC catalog. This page summarizes available data, where to download it, and how to open Cloud-Optimized GeoTIFFs.
+Maps and figures on this site are built from **original public datasets** (satellite products, weather archives, fire perimeters, park boundaries, and community observations). This page names those sources, summarizes what each product shows, and explains how to open the Cloud-Optimized GeoTIFFs and STAC items used for convenient access.
+
+# Original sources
+
+| Theme | Upstream source | What EMMA uses |
+|---|---|---|
+| Vegetation greenness (EVI) | NASA **MODIS** Terra/Aqua (`MOD13A1` / `MYD13A1`) and **VIIRS** S-NPP / NOAA-20 (`VNP13A1` / `VJ113A1`), via NASA AppEEARS | 16-day composites fused VIIRS→Terra→Aqua |
+| Burned area / veld age | NASA **MODIS** (`MCD64A1`) and **VIIRS** (`VNP64A1`) burned-area products; **CapeNature** fire perimeters; **Table Mountain NP** historical fires (`tmnp_fire_1962_2021`) where available | Pixel fire dates, ages, and censored never-burned cells |
+| Weather | NOAA / **NCEI Global Summary of the Day (GSOD)** daily station CSV archive | Nearest stations within ~100 km of parks; daily TEMP (°C) and PRCP (mm), typically from **≥2000** when published |
+| Invasives | **iNaturalist** opportunistic observations (curated invasive genera) | Recent records in parks + buffer |
+| Park boundaries | **SACAD / SAPAD** national parks and **CapeNature** provincial reserves | Dissolved park polygons for reports and maps |
+
+Multi-sensor EVI fill order: **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). NA in EVI layers means all available sensors were missing after QA.
 
 # Data shown on this site
 
-| Product | What you see | Typical as-of |
+| Product | What you see | As-of / coverage note |
 |---|---|---|
 | Fused EVI | Latest greenness + monthly / long-term ΔEVI on park maps (EVI layer group) | `r format(most_recent_evi_date, "%Y-%m-%d")` |
-| Veld Age (years) | Continuous fire-age raster; true ages (not collapsed to 20) | `fireage` release snapshot |
-| Fire History | Burn outlines (one layer; age-bin stroke colors) | `fireage` release snapshot |
-| Invasives | Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers) | `inat_data` |
-| Weather | Nearest GSOD station climate when rows exist (≥2000 when published) | `weather_data` |
-
-Multi-sensor EVI fill order: **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). NA in EVI layers means all available sensors were missing after QA.
+| Veld Age (years) | Continuous fire-age raster; true ages (not collapsed to 20) | Latest fire-history snapshot |
+| Fire History | Burn outlines (one layer; age-bin stroke colors) | Latest fire-history snapshot |
+| Invasives | Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers) | Observations from 2020 onward (harvest window) |
+| Weather | Nearest GSOD (NCEI) station climate when rows exist | Daily series from ≥2000 when available |
 
 # STAC catalog
 
@@ -42,11 +52,11 @@ Browse the public STAC root and VI collection for latest 16-day composites (EVI 
 
 Latest VI item id: **`r data_freshness$stac_item_id %||% "unavailable"`** · datetime **`r data_freshness$stac_datetime %||% "unavailable"`**.
 
-# GitHub data releases
+# Downloadable products (COGs & tables)
 
-Release **tags** for common products (open a tag page for its assets):
+Processed rasters and tables aligned to the EMMA domain grid are published as GitHub Release assets for direct COG / Parquet access (these are **delivery packages**, not the scientific citation—use the upstream sources above):
 
-| Tag | Contents |
+| Release tag | Contents |
 |---|---|
 | [`static_data`](https://github.com/eco-emma/emma_envdata/releases/tag/static_data) | Domain grid, parks, covariates |
 | [`fireage`](https://github.com/eco-emma/emma_envdata/releases/tag/fireage) | `fireage_current.tif` + dated fire-age parquet |

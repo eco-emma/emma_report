@@ -1,5 +1,5 @@
 # Rolling 12-month climatology envelope plots for park weather
-# (GSOD via emma_envdata `weather_data`).
+# GSOD / NCEI daily station series (downloaded for report build).
 #
 # Alignment: prior 12-month slices, calendar-shifted onto the current
 # trailing window that ends at the latest available weather date. Not a

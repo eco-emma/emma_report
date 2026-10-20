@@ -1,0 +1,38 @@
+name: General feedback
+description: Park note, unclear copy, question, or other feedback about emma.eco.
+title: "[feedback] "
+labels: ["feedback", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for park-specific notes, unclear wording, questions about the site, or other feedback that is not a clear data error or feature request.
+
+        Do not paste passwords, tokens, private landowner names, or sensitive species locations beyond what is already public on the map.
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: Maintainers may add a `copy` or `park-note` label after triage.
+      options:
+        - Feedback
+        - Question
+        - Park note (local knowledge)
+        - Unclear copy / wording
+    validations:
+      required: true
+  - type: input
+    id: park
+    attributes:
+      label: Park (if any)
+      description: Optional
+      placeholder: e.g. Table Mountain National Park
+    validations:
+      required: false
+  - type: textarea
+    id: message
+    attributes:
+      label: Message
+      description: What should the EMMA team know?
+    validations:
+      required: true

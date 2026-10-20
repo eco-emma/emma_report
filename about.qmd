@@ -4,6 +4,8 @@ title: "About EMMA"
 
 EMMA is a decision-support tool for protected areas in South Africa’s Cape Floristic Region. It delivers continuously updated regional summaries and park-level reports on vegetation condition, anomalies, fire history, and veld age so managers can see what has changed and where to look next—co-developed with the South African Environmental Observation Network (SAEON) and academic partners at the University at Buffalo and the University of Cape Town.
 
+To report a map or figure that looks wrong, or to suggest an improvement, see [Feedback](feedback.qmd).
+
 ## Project Workflow & Partners
 
 Primary end-user and long-term steward: **SAEON**. The system informs protected-area managers and SAEON stakeholders including SANParks, CapeNature, and other conservation partners (e.g. WWF, The Nature Conservancy).

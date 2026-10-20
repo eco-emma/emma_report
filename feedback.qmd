@@ -21,7 +21,6 @@ The EMMA team reviews issues on GitHub, may ask a follow-up question, and update
 
 - Personal or private landowner details, or GPS of sensitive species beyond what is already public on the map
 - Passwords, tokens, private URLs, or vulnerability details (use [GitHub Security Advisories](https://github.com/eco-emma/emma_report/security) if ever needed)
-- Grant administration or RF/UEI contacts
 
 ## Data sources
 

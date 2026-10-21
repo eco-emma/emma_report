@@ -45,6 +45,20 @@ stopifnot(identical(EVI_DELTA_LONGTERM_GROUP, "\u0394EVI (long term)"))
 stopifnot(identical(EVI_LAYER_CONTROL_HEADER, "EVI"))
 stopifnot(identical(PARK_OUTLINE_COLOR, "#14532d"))
 stopifnot(identical(as.integer(PARK_OUTLINE_WEIGHT), 1L))
+# Park map defaults (report_prototype.qmd): Veld Age on; Fire History off.
+qmd_map <- paste(readLines("report_prototype.qmd", warn = FALSE), collapse = "\n")
+hide_block <- regmatches(
+  qmd_map,
+  regexpr(
+    "park_map <- park_map %>%\\s*\\n\\s*hideGroup\\(\"Stations\"\\)[\\s\\S]*?(?=\\nif \\(isTRUE\\(has_focal_invasives\\))",
+    qmd_map,
+    perl = TRUE
+  )
+)
+stopifnot(length(hide_block) == 1L, nchar(hide_block) > 0L)
+stopifnot(grepl("hideGroup\\(FIRE_HISTORY_GROUP\\)", hide_block))
+stopifnot(!grepl("hideGroup\\(VELD_AGE_GROUP\\)", hide_block))
+message("PASS: park map default overlays (Veld Age on, Fire History off)")
 stopifnot(is.character(park_map_evi_group_header_js()))
 stopifnot(grepl("emma-layer-group-header", park_map_evi_group_header_js()))
 stopifnot(grepl("Current EVI", park_map_tooltip_format_js()))

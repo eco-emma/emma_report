@@ -1538,38 +1538,28 @@ spi2_xts= xts(select(spi2,-date),order.by=spi2$date)
 }
 ```
 
-# Report Metadata
-
-This table summarizes the date this report was generated and the most recent observation for each data type. Site products are derived from [`emma_envdata`](https://github.com/eco-emma/emma_envdata) releases and STAC — see [Data sources & downloads →](../data.html).
-
-```{r, echo=F, results='asis'}
-# build table of dates when products were last updated
-
-weather_updated <- if (isTRUE(has_weather) &&
-                       is.data.frame(focal_weather) &&
-                       "date_time" %in% names(focal_weather) &&
-                       nrow(focal_weather) > 0L) {
-  format(max(focal_weather$date_time, na.rm = TRUE), "%Y-%b-%d")
-} else {
-  "unavailable"
-}
-dates <- bind_rows(
-  data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(
-    Description = "EVI (VIIRS→Terra→Aqua fill)",
-    Date = format(most_recent_evi_date, "%Y-%b-%d")
-  ),
-  data.frame(Description = "Weather", Date = weather_updated)
-) |> 
-  select(Description, "Date last updated"=Date)
-
-knitr::kable(dates)
- 
-```
-
-```{r park-coverage-freshness-footer, echo=FALSE, results='asis'}
-# Park panel coverage (4B / 12A) + rank 7 freshness; Data page link in strip.
+```{r data-status-footer, echo=FALSE, results='asis'}
+# Compact Data status (park coverage + product dates); grant footer stays separate
 park_name <- params$focal_park_name
-cat(format_coverage_park_md(coverage_metrics, park_name))
-cat(format_freshness_badge_park_md(data_freshness))
+weather_as_of <- if (isTRUE(has_weather) &&
+                     is.data.frame(focal_weather) &&
+                     nrow(focal_weather) > 0L) {
+  if ("date_time" %in% names(focal_weather)) {
+    max(focal_weather$date_time, na.rm = TRUE)
+  } else if ("YEARMODA" %in% names(focal_weather)) {
+    max(focal_weather$YEARMODA, na.rm = TRUE)
+  } else {
+    NULL
+  }
+} else {
+  NULL
+}
+cat(format_data_status_park_md(
+  coverage_metrics,
+  data_freshness,
+  park_name = park_name,
+  evi_as_of = most_recent_evi_date,
+  weather_as_of = weather_as_of,
+  data_href = "../data.html"
+))
 ```

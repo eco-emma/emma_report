@@ -107,6 +107,18 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     log1p_y = TRUE
   )
   stopifnot(inherits(p, "ggplot"))
+  # Precip log1p scale: breaks are log1p(nice mm), labels are mm
+  y_scale <- p$scales$get_scales("y")
+  stopifnot(!is.null(y_scale))
+  mm_cand <- c(0, 5, 10, 50, 100, 500, 1000)
+  y_max_raw <- max(
+    c(layers$years$value, layers$envelope$p95, layers$current$value),
+    na.rm = TRUE
+  )
+  expect_mm <- mm_cand[mm_cand <= y_max_raw]
+  if (!length(expect_mm)) expect_mm <- 0
+  stopifnot(isTRUE(all.equal(y_scale$breaks, log1p(expect_mm))))
+  stopifnot(identical(as.numeric(y_scale$labels), as.numeric(expect_mm)))
   p2 <- plot_weather_climatology(
     layers_t,
     ylab = "Temperature (°C)",
@@ -114,6 +126,10 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     log1p_y = FALSE
   )
   stopifnot(inherits(p2, "ggplot"))
+  # Temperature stays linear (no custom log1p breaks)
+  y_scale_t <- p2$scales$get_scales("y")
+  stopifnot(is.null(y_scale_t) || is.null(y_scale_t$breaks) ||
+              !identical(y_scale_t$breaks, log1p(expect_mm)))
   # Combined two-panel: shared x window + cowplot stack
   stopifnot(identical(layers$window_start, layers_t$window_start))
   stopifnot(identical(layers$window_end, layers_t$window_end))

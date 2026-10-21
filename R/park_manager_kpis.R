@@ -989,29 +989,37 @@ PARK_MAP_QUERY_LAYER_ID <- "evi_delta_monthly"
 #'
 #' Prefers `is_censored` when present (fireage ≥ 2026-09-21 schema). Falls back
 #' to NA/`0` `last_burn_date` or `fire_count <= 0` on older assets.
+#'
+#' Mixed-schema binds (new files with `is_censored` + older annual files without)
+#' leave NA on historical rows — fall back **per row** so Fig. 2 ridge / censored
+#' panels are not stuck at 100% censored for every pre-schema year.
 fire_history_row_censored <- function(df) {
   stopifnot(is.data.frame(df))
   n <- nrow(df)
   if (n < 1L) {
     return(logical())
   }
-  # When is_censored is present with any non-NA values, trust it. NA in that
-  # column is treated as censored (conservative); do not mix with last_burn
-  # fallback per-row — that made c(0,1,NA) → c(FALSE,TRUE,FALSE) and broke CI.
-  if ("is_censored" %in% names(df) && !all(is.na(df$is_censored))) {
-    ic <- df$is_censored
-    if (is.numeric(ic)) {
-      return(is.na(ic) | ic != 0)
-    }
-    out <- as.logical(ic)
-    out[is.na(out)] <- TRUE
-    return(out)
-  }
   lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
   fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
   lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
   fc_zero <- !is.na(fc) & fc <= 0
-  lbd_missing | fc_zero
+  fallback <- lbd_missing | fc_zero
+
+  if (!("is_censored" %in% names(df)) || all(is.na(df$is_censored))) {
+    return(fallback)
+  }
+  ic <- df$is_censored
+  need_fb <- is.na(ic)
+  out <- logical(n)
+  if (any(!need_fb)) {
+    if (is.numeric(ic)) {
+      out[!need_fb] <- ic[!need_fb] != 0
+    } else {
+      out[!need_fb] <- as.logical(ic[!need_fb])
+    }
+  }
+  out[need_fb] <- fallback[need_fb]
+  out
 }
 
 #' Keep the latest composite row per park cell (`cellID` / `pid`).
@@ -1086,6 +1094,103 @@ park_burned_area_by_year <- function(fireage_rast, park_mask, cell_ha) {
   tab$n_cells <- as.integer(tab$n_cells)
   tab$area_ha <- as.numeric(tab$n_cells) * as.numeric(cell_ha)
   tab[order(tab$burn_year), , drop = FALSE]
+}
+
+#' Per-year known vegetation ages + censored fraction from `fireage_current.tif`.
+#'
+#' Reconstructs a calendar-year series from the same most-recent-burn snapshot as
+#' [park_burned_area_by_year()] so Fig. 2 ridge and censored panels track the
+#' burn bars (parquet history alone mixes schemas and most-recent-only joins).
+#'
+#' For each year `Y` in `years`, a park cell is **known** when
+#' `last_burn_date ≤ 31 Dec Y` (and not flagged never-burned on the snapshot);
+#' age is `(31 Dec Y − last_burn_date) / 365.25`. Otherwise censored.
+#'
+#' @param fireage_rast SpatRaster with `last_burn_date` (+ optional `is_censored`)
+#' @param park_mask Logical cell mask aligned to `fireage_rast`
+#' @param years Integer calendar years to evaluate
+#' @return list with `known_ages` (year, years_since_fire) and
+#'   `censored_summary` (year, n, n_censored, fraction_censored)
+park_veg_age_series_from_fireage <- function(fireage_rast, park_mask, years) {
+  empty_known <- data.frame(
+    year = integer(),
+    years_since_fire = numeric(),
+    stringsAsFactors = FALSE
+  )
+  empty_cens <- data.frame(
+    year = integer(),
+    n = integer(),
+    n_censored = integer(),
+    fraction_censored = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (!inherits(fireage_rast, "SpatRaster") || length(park_mask) < 1L) {
+    return(list(known_ages = empty_known, censored_summary = empty_cens))
+  }
+  years <- as.integer(years)
+  years <- years[is.finite(years)]
+  if (!length(years)) {
+    return(list(known_ages = empty_known, censored_summary = empty_cens))
+  }
+  masks <- fire_age_coverage_masks(fireage_rast, park_mask)
+  n_park <- sum(park_mask, na.rm = TRUE)
+  if (!is.finite(n_park) || n_park < 1L) {
+    return(list(known_ages = empty_known, censored_summary = empty_cens))
+  }
+  nms <- names(fireage_rast)
+  last <- if ("last_burn_date" %in% nms) {
+    fireage_rast[["last_burn_date"]]
+  } else if (terra::nlyr(fireage_rast) >= 2L) {
+    fireage_rast[[2]]
+  } else {
+    return(list(known_ages = empty_known, censored_summary = empty_cens))
+  }
+  last_v <- terra::values(last, mat = FALSE)
+  # Snapshot never-burned stay censored every year; known last burns unlock
+  # from their burn year forward (most-recent-burn semantics).
+  candidate <- park_mask & masks$known & is.finite(last_v) & last_v > 0
+  burn_dates <- rep(as.Date(NA), length(last_v))
+  if (any(candidate, na.rm = TRUE)) {
+    burn_dates[candidate] <- suppressWarnings(
+      lubridate::as_date(last_v[candidate])
+    )
+  }
+
+  known_ages_list <- vector("list", length(years))
+  cens_rows <- vector("list", length(years))
+  for (i in seq_along(years)) {
+    y <- years[[i]]
+    as_of <- as.Date(sprintf("%d-12-31", y))
+    known_i <- candidate & !is.na(burn_dates) & burn_dates <= as_of
+    n_known <- sum(known_i, na.rm = TRUE)
+    n_cens <- as.integer(n_park - n_known)
+    cens_rows[[i]] <- data.frame(
+      year = y,
+      n = as.integer(n_park),
+      n_censored = n_cens,
+      fraction_censored = n_cens / n_park,
+      stringsAsFactors = FALSE
+    )
+    if (n_known < 1L) {
+      known_ages_list[[i]] <- empty_known
+      next
+    }
+    ages <- as.numeric(as_of - burn_dates[known_i]) / 365.25
+    ages <- ages[is.finite(ages) & ages >= 0]
+    if (!length(ages)) {
+      known_ages_list[[i]] <- empty_known
+      next
+    }
+    known_ages_list[[i]] <- data.frame(
+      year = as.integer(rep(y, length(ages))),
+      years_since_fire = ages,
+      stringsAsFactors = FALSE
+    )
+  }
+  list(
+    known_ages = do.call(rbind, known_ages_list),
+    censored_summary = do.call(rbind, cens_rows)
+  )
 }
 
 #' Format rank-3 KPI + stress strip (Markdown).

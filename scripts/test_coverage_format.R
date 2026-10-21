@@ -1,5 +1,6 @@
 #!/usr/bin/env Rscript
-# Lightweight checks for coverage / freshness formatters (no network, no geotargets).
+# Lightweight checks for coverage / freshness / Data status formatters
+# (no network, no geotargets).
 # Run: Rscript scripts/test_coverage_format.R
 
 source("R/envdata_contract.R")
@@ -31,6 +32,7 @@ fake <- list(
   )
 )
 
+# Legacy strips still format (soft-compat) but pages use Data status
 md <- format_coverage_domain_md(fake)
 stopifnot(grepl("\\*\\*Coverage\\*\\*", md))
 stopifnot(grepl("data.html#coverage-assessment-metrics", md))
@@ -63,7 +65,17 @@ fresh <- list(
   stac_datetime = "2026-09-21T00:00:00Z",
   newest_release_tag = "fireage",
   newest_release_updated_at = "2026-10-16T19:52:30Z",
-  catalog_url = ENVDATA_STAC_CATALOG_URL
+  catalog_url = ENVDATA_STAC_CATALOG_URL,
+  releases = data.frame(
+    tag = c("fireage", "weather_data", "inat_data"),
+    updated_at = c(
+      "2026-10-16T19:52:30Z",
+      "2026-10-10T12:00:00Z",
+      NA_character_
+    ),
+    published_at = c(NA_character_, NA_character_, NA_character_),
+    stringsAsFactors = FALSE
+  )
 )
 b <- format_freshness_badge_md(fresh, build_time = as.POSIXlt("2026-10-19 12:00:00", tz = "UTC"))
 stopifnot(grepl("Data freshness", b))
@@ -73,4 +85,47 @@ stopifnot(grepl("page built", b))
 pb <- format_freshness_badge_park_md(fresh)
 stopifnot(grepl("\\.\\./data.html", pb))
 
-message("All coverage/freshness formatter tests passed.")
+stopifnot(identical(release_updated_day(fresh, "fireage"), "2026-10-16"))
+stopifnot(identical(release_updated_day(fresh, "inat_data"), "—"))
+stopifnot(identical(release_updated_day(fresh, "missing"), "—"))
+
+# Merged Data status footer (domain)
+ds <- format_data_status_md(
+  fake,
+  fresh,
+  evi_as_of = as.Date("2026-09-21"),
+  weather_as_of = as.Date("2026-10-01"),
+  build_time = as.POSIXlt("2026-10-19 12:00:00", tz = "UTC"),
+  data_href = "data.html"
+)
+stopifnot(grepl("emma-data-status", ds))
+stopifnot(grepl("Data status", ds))
+stopifnot(grepl("Fused EVI", ds))
+stopifnot(grepl("2026-09-21", ds))
+stopifnot(grepl("2026-10-01", ds))
+stopifnot(grepl("known 40", ds))
+stopifnot(grepl("data.html#coverage-assessment-metrics", ds))
+stopifnot(!grepl("emma-coverage-strip", ds))
+stopifnot(!grepl("emma-freshness-badge", ds))
+# Soft-fail: missing STAC still renders a row
+fresh_na <- fresh
+fresh_na$stac_datetime <- NA_character_
+ds_na <- format_data_status_md(fake, fresh_na, weather_as_of = NULL)
+stopifnot(grepl("Fused EVI", ds_na))
+stopifnot(grepl("Weather", ds_na))
+
+# Park variant
+dsp <- format_data_status_park_md(
+  fake,
+  fresh,
+  park_name = "Table Mountain National Park",
+  weather_as_of = "2026-09-30",
+  data_href = "../data.html"
+)
+stopifnot(grepl("emma-data-status-park", dsp))
+stopifnot(grepl("Park area", dsp))
+stopifnot(grepl("225 km", dsp))
+stopifnot(grepl("\\.\\./data.html", dsp))
+stopifnot(grepl("88%", dsp))
+
+message("All coverage/freshness/Data status formatter tests passed.")

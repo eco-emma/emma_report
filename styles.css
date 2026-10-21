@@ -14,7 +14,7 @@
   color: #1f2937;
 }
 
-/* Quiet assessment / freshness footers (not hero) — P0 coverage + rank 7 */
+/* Quiet assessment / freshness footers (legacy; superseded by Data status) */
 .emma-coverage-strip,
 .emma-freshness-badge {
   margin: 1.25rem 0 0.5rem;
@@ -29,6 +29,60 @@
 
 .emma-coverage-park {
   margin-top: 0.75rem;
+}
+
+/* Compact merged Data status footer (freshness + coverage; not grant chrome) */
+.emma-data-status {
+  margin: 1.25rem 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: #3a3a3a;
+  background: #f3f4f6;
+  border-top: 1px solid #d1d5db;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.emma-data-status h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.emma-data-status-table {
+  width: 100%;
+  max-width: 36rem;
+  margin: 0 0 0.4rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.emma-data-status-table th,
+.emma-data-status-table td {
+  padding: 0.15rem 0.4rem;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+
+.emma-data-status-table th {
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.emma-data-status-park {
+  margin-top: 0.75rem;
+}
+
+/* Collapsed per-park coverage matrix on Data page */
+.emma-coverage-park-details {
+  margin: 0.75rem 0 1rem;
+}
+
+.emma-coverage-park-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #374151;
 }
 
 .emma-saeon-footer {

@@ -1,6 +1,6 @@
 ---
 title: "Data"
-subtitle: "Site products, STAC, and downloads"
+subtitle: "Sources, status, STAC, and downloads"
 ---
 
 ```{r setup, echo=FALSE, message=FALSE, warning=FALSE, results="hide"}
@@ -17,51 +17,75 @@ source("R/data_freshness.R", local = FALSE)
 tar_load(coverage_metrics)
 tar_load(data_freshness)
 tar_load(most_recent_evi_date)
+tar_load(weather_data)
 ```
 
-Sources for maps and figures on this site are derived in `emma_report` from public [`eco-emma/emma_envdata`](https://github.com/eco-emma/emma_envdata) GitHub Releases and the STAC catalog. This page summarizes available data, where to download it, and how to open Cloud-Optimized GeoTIFFs.
+Maps and figures on this site are built from **original public datasets** (NASA MODIS/VIIRS, CapeNature and TMNP fire records, iNaturalist, GSOD/NCEI, and park boundaries). Processed COGs and tables are published for download via GitHub Releases and STAC — those packages are **delivery**, not the scientific citation.
 
-# Data shown on this site
+**As-of** is the date maps and figures *represent* (composite, fire snapshot, station day). **Last updated** is when the published artifact was last refreshed (STAC item datetime or release `updated_at`). Empty cells mean unknown — we do not invent dates.
 
-| Product | What you see | Typical as-of |
-|---|---|---|
-| Fused EVI | Latest greenness + monthly / long-term ΔEVI on park maps (EVI layer group) | `r format(most_recent_evi_date, "%Y-%m-%d")` |
-| Veld Age (years) | Continuous fire-age raster; true ages (not collapsed to 20) | `fireage` release snapshot |
-| Fire History | Burn outlines (one layer; age-bin stroke colors) | `fireage` release snapshot |
-| Invasives | Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers) | `inat_data` |
-| Weather | Nearest GSOD station climate when rows exist (≥2000 when published) | `weather_data` |
+# EMMA Data Sources and Status
+
+```{r sources-status-table, echo=FALSE}
+evi_asof <- format(most_recent_evi_date, "%Y-%m-%d")
+evi_updated <- {
+  st <- data_freshness$stac_datetime
+  if (length(st) == 1L && !is.na(st) && nzchar(st)) substr(st, 1L, 10L) else "—"
+}
+fire_updated <- release_updated_day(data_freshness, "fireage")
+inat_updated <- release_updated_day(data_freshness, "inat_data")
+weather_updated <- release_updated_day(data_freshness, "weather_data")
+weather_asof <- if (is.data.frame(weather_data) &&
+                    "YEARMODA" %in% names(weather_data) &&
+                    nrow(weather_data) > 0L) {
+  format(max(weather_data$YEARMODA, na.rm = TRUE), "%Y-%m-%d")
+} else {
+  "—"
+}
+
+tribble(
+  ~Product, ~`What you see`, ~`As-of`, ~`Last updated`, ~Source,
+  "Fused EVI",
+  "Latest greenness + monthly / long-term ΔEVI on park maps (EVI layer group)",
+  evi_asof,
+  evi_updated,
+  "NASA MODIS/VIIRS (fill order below)",
+  "Veld Age (years)",
+  "Continuous fire-age raster; true ages (not collapsed to 20)",
+  "Fire-history snapshot",
+  fire_updated,
+  "CapeNature / TMNP fire records; MODIS/VIIRS burned area",
+  "Fire History",
+  "Burn outlines (one layer; age-bin stroke colors)",
+  "Fire-history snapshot",
+  fire_updated,
+  "CapeNature / TMNP fire records; MODIS/VIIRS burned area",
+  "Invasives",
+  "Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers)",
+  "Observations from 2020 onward",
+  inat_updated,
+  "iNaturalist",
+  "Weather",
+  "Nearest GSOD station climate when rows exist (≥2000 when published)",
+  weather_asof,
+  weather_updated,
+  "GSOD / NCEI"
+) |>
+  knitr::kable()
+```
 
 Multi-sensor EVI fill order: **VIIRS NOAA-20 → VIIRS S-NPP → Terra → Aqua** (first non-NA wins). NA in EVI layers means all available sensors were missing after QA.
 
-# STAC catalog
-
-Browse the public STAC root and VI collection for latest 16-day composites (EVI COGs by sensor):
-
-- [STAC catalog (`catalog.json`)](`r ENVDATA_STAC_CATALOG_URL`)
-- [VI collection](https://github.com/eco-emma/emma_envdata/releases/download/stac-vi/vi_collection.json)
-
-Latest VI item id: **`r data_freshness$stac_item_id %||% "unavailable"`** · datetime **`r data_freshness$stac_datetime %||% "unavailable"`**.
-
-# GitHub data releases
-
-Release **tags** for common products (open a tag page for its assets):
-
-| Tag | Contents |
-|---|---|
-| [`static_data`](https://github.com/eco-emma/emma_envdata/releases/tag/static_data) | Domain grid, parks, covariates |
-| [`fireage`](https://github.com/eco-emma/emma_envdata/releases/tag/fireage) | `fireage_current.tif` + dated fire-age parquet |
-| [`vi_modis_terra_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_terra_raster) / [`vi_modis_aqua_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_aqua_raster) / [`vi_viirs_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_viirs_raster) | 16-day VI COGs |
-| [`vi_modis_parquet`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_parquet) / [`vi_viirs_parquet`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_viirs_parquet) | Tabular EVI by `pid` |
-| [`burn_modis_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/burn_modis_raster) / [`burn_viirs_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/burn_viirs_raster) | Monthly burn COGs |
-| [`weather_data`](https://github.com/eco-emma/emma_envdata/releases/tag/weather_data) | GSOD parquet + stations |
-| [`inat_data`](https://github.com/eco-emma/emma_envdata/releases/tag/inat_data) | Invasives GeoPackage |
-| [`stac`](https://github.com/eco-emma/emma_envdata/releases/tag/stac) / [`stac-vi`](https://github.com/eco-emma/emma_envdata/releases/tag/stac-vi) | STAC JSON |
-
-Download pattern: `https://github.com/eco-emma/emma_envdata/releases/download/<tag>/<filename>`.
+Download via [GitHub Releases](#github-data-releases) and the [STAC catalog](#stac-catalog) below (delivery packages only).
 
 # Coverage metrics {#coverage-assessment-metrics}
 
 Domain and park coverage totals. Denominators use the 500 m domain grid.
+
+- **Domain area** — cells in the EMMA domain mask.
+- **Parks-union area** — domain cells intersecting any park polygon.
+- **Valid latest fused EVI** — domain cells with non-NA fused EVI on the composite date.
+- **Fire-age known / censored** — after dropping cells where all fireage bands are NA; censored = never-burned / right-censored (`is_censored = 1`).
 
 ```{r coverage-table, echo=FALSE}
 domain_km2 <- coverage_metrics$domain$km2
@@ -85,6 +109,11 @@ EVI composite date: **`r format(coverage_metrics$evi_as_of, "%Y-%m-%d")`**.
 
 `r coverage_metrics$fire_mask_note`
 
+```{=html}
+<details class="emma-coverage-park-details">
+<summary>See coverage details for each park</summary>
+```
+
 **Park area (VIIRS cells intersecting the park)**
 
 ```{r park-coverage-preview, echo=FALSE}
@@ -99,6 +128,37 @@ coverage_metrics$parks |>
   ) |>
   knitr::kable()
 ```
+
+```{=html}
+</details>
+```
+
+
+# STAC catalog
+
+Browse the public STAC root and VI collection for latest 16-day composites (EVI COGs by sensor):
+
+- [STAC catalog (`catalog.json`)](`r ENVDATA_STAC_CATALOG_URL`)
+- [VI collection](https://github.com/eco-emma/emma_envdata/releases/download/stac-vi/vi_collection.json)
+
+Latest VI item id: **`r data_freshness$stac_item_id %||% "unavailable"`** · datetime **`r data_freshness$stac_datetime %||% "unavailable"`**.
+
+# GitHub data releases
+
+Release **tags** are delivery packages (not scientific attribution). Open a tag page for its assets:
+
+| Tag | Contents |
+|---|---|
+| [`static_data`](https://github.com/eco-emma/emma_envdata/releases/tag/static_data) | Domain grid, parks, covariates |
+| [`fireage`](https://github.com/eco-emma/emma_envdata/releases/tag/fireage) | `fireage_current.tif` + dated fire-age parquet |
+| [`vi_modis_terra_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_terra_raster) / [`vi_modis_aqua_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_aqua_raster) / [`vi_viirs_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_viirs_raster) | 16-day VI COGs |
+| [`vi_modis_parquet`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_modis_parquet) / [`vi_viirs_parquet`](https://github.com/eco-emma/emma_envdata/releases/tag/vi_viirs_parquet) | Tabular EVI by `pid` |
+| [`burn_modis_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/burn_modis_raster) / [`burn_viirs_raster`](https://github.com/eco-emma/emma_envdata/releases/tag/burn_viirs_raster) | Monthly burn COGs |
+| [`weather_data`](https://github.com/eco-emma/emma_envdata/releases/tag/weather_data) | GSOD parquet + stations |
+| [`inat_data`](https://github.com/eco-emma/emma_envdata/releases/tag/inat_data) | Invasives GeoPackage |
+| [`stac`](https://github.com/eco-emma/emma_envdata/releases/tag/stac) / [`stac-vi`](https://github.com/eco-emma/emma_envdata/releases/tag/stac-vi) | STAC JSON |
+
+Download pattern: `https://github.com/eco-emma/emma_envdata/releases/download/<tag>/<filename>`.
 
 # Using COGs & STAC
 
@@ -153,9 +213,21 @@ cat = Catalog.from_file(
 print([c.id for c in cat.get_children()])
 ```
 
-```{r freshness-and-coverage-footer, echo=FALSE, results='asis'}
-cat(format_coverage_domain_md(coverage_metrics))
-cat(format_freshness_badge_md(data_freshness))
+```{r data-status-footer, echo=FALSE, results='asis'}
+weather_as_of <- if (is.data.frame(weather_data) &&
+                     "YEARMODA" %in% names(weather_data) &&
+                     nrow(weather_data) > 0L) {
+  max(weather_data$YEARMODA, na.rm = TRUE)
+} else {
+  NULL
+}
+cat(format_data_status_md(
+  coverage_metrics,
+  data_freshness,
+  evi_as_of = most_recent_evi_date,
+  weather_as_of = weather_as_of,
+  data_href = "data.html"
+))
 ```
 
 <p class="emma-saeon-footer">

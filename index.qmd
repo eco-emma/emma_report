@@ -249,36 +249,20 @@ cowplot::plot_grid(
 
 ```
 
-# As-of dates
-
-See the [Data](data.qmd) page for STAC links, GitHub release tags, coverage definitions, and COG how-to. Product as-of dates:
-
-```{r, echo=F, results='asis'}
-# build table of dates when products were last updated
-
-weather_updated <- if (is.data.frame(weather_data) &&
-                       "YEARMODA" %in% names(weather_data) &&
-                       nrow(weather_data) > 0L) {
-  format(max(weather_data$YEARMODA, na.rm = TRUE), "%Y-%b-%d")
+```{r data-status-footer, echo=FALSE, results='asis'}
+# Compact Data status (merged freshness + coverage); grant footer stays separate
+weather_as_of <- if (is.data.frame(weather_data) &&
+                     "YEARMODA" %in% names(weather_data) &&
+                     nrow(weather_data) > 0L) {
+  max(weather_data$YEARMODA, na.rm = TRUE)
 } else {
-  "unavailable"
+  NULL
 }
-dates <- bind_rows(
-  data.frame(Description = "Website", Date = format(now(), "%Y-%b-%d")),
-  data.frame(
-    Description = "EVI (VIIRS→Terra→Aqua fill)",
-    Date = format(most_recent_evi_date, "%Y-%b-%d")
-  ),
-  data.frame(Description = "Weather", Date = weather_updated)
-) |> 
-  select(Description, "Date last updated"=Date)
-
-knitr::kable(dates)
- 
-```
-
-```{r coverage-freshness-footer, echo=FALSE, results='asis'}
-# Quiet assessment strip + freshness badge — not the hero (10B / 12A / rank 7)
-cat(format_coverage_domain_md(coverage_metrics))
-cat(format_freshness_badge_md(data_freshness))
+cat(format_data_status_md(
+  coverage_metrics,
+  data_freshness,
+  evi_as_of = most_recent_evi_date,
+  weather_as_of = weather_as_of,
+  data_href = "data.html"
+))
 ```

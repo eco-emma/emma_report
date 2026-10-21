@@ -60,6 +60,54 @@ if (requireNamespace("leaflet", quietly = TRUE)) {
 stopifnot(identical(fire_history_outline_color(2), "#b30000"))
 stopifnot(identical(fire_history_outline_color(25), "#fdbb84"))
 stopifnot(length(fire_history_outline_color(c(2, 7, 15))) == 3L)
+stopifnot(identical(PARK_MAP_QUERY_LAYER_ID, "evi_delta_monthly"))
+
+# Censor flag: prefer is_censored; else last_burn / fire_count
+cens_ic <- fire_history_row_censored(data.frame(
+  is_censored = c(0, 1, NA),
+  last_burn_date = c(100, 100, 100),
+  fire_count = c(1, 1, 1)
+))
+stopifnot(identical(as.logical(cens_ic), c(FALSE, TRUE, TRUE)))
+cens_fb <- fire_history_row_censored(data.frame(
+  last_burn_date = c(100, NA, 0),
+  fire_count = c(2, 1, 3)
+))
+stopifnot(identical(as.logical(cens_fb), c(FALSE, TRUE, TRUE)))
+
+# Latest-per-cell must not use global max(date) (keeps only a few cells)
+hist_df <- data.frame(
+  cellID = c(1, 1, 2, 2, 3),
+  date = as.Date(c("2026-09-01", "2026-09-21", "2026-09-01", "2026-09-10", "2026-09-21")),
+  last_burn_date = c(1, 2, 3, 4, NA),
+  fire_count = c(1, 1, 1, 1, 0),
+  days_since_fire = c(10, 5, 20, 15, NA)
+)
+latest <- fire_history_latest_per_cell(hist_df)
+stopifnot(nrow(latest) == 3L)
+stopifnot(identical(sort(latest$cellID), c(1, 2, 3)))
+stopifnot(identical(as.Date(latest$date[latest$cellID == 1]), as.Date("2026-09-21")))
+stopifnot(identical(as.Date(latest$date[latest$cellID == 2]), as.Date("2026-09-10")))
+
+# Burned-area from fireage_current-style stack (no network)
+if (requireNamespace("terra", quietly = TRUE)) {
+  r_age <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2, ymin = 0, ymax = 2, crs = "EPSG:4326")
+  # R Date integers: 2020-01-01 ≈ 18262; 2015-06-01 ≈ 16587
+  r_last <- terra::rast(r_age)
+  r_cens <- terra::rast(r_age)
+  terra::values(r_age) <- c(100, 200, 300, NA)
+  terra::values(r_last) <- c(18262, 16587, NA, NA)
+  terra::values(r_cens) <- c(0, 0, 1, NA)
+  names(r_age) <- "fire_age_days"
+  names(r_last) <- "last_burn_date"
+  names(r_cens) <- "is_censored"
+  fireage <- c(r_age, r_last, r_cens)
+  mask <- c(TRUE, TRUE, TRUE, FALSE)
+  aby <- park_burned_area_by_year(fireage, mask, cell_ha = 25)
+  stopifnot(nrow(aby) == 2L)
+  stopifnot(all(c(2015L, 2020L) %in% aby$burn_year))
+  stopifnot(abs(sum(aby$area_ha) - 50) < 1e-9)
+}
 
 # --- Invasive watch list -----------------------------------------------------
 watch <- invasive_watch_list(data.frame(

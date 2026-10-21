@@ -230,17 +230,46 @@ tar_age(name = inat_data,
             age = as.difftime(1, units = "days")
            ),
 
-   tar_age(name = park_fire_history,
-              command = get_fire_history(temp_directory = temp_directory,
-                                         max_attempts = 10,
-                                         sleep_time = 10,
-                                         protected_areas = protected_areas,
-                                         n_recent = 24L,
-                                         n_years = 20L),
-           # age = as.difftime(7, units = "days") #weekly updates
-           # age = as.difftime(1, units = "days") #daily updates
-            age = as.difftime(28, units = "days") #will update monthly
-           ),
+   # Fingerprint newest fireage parquet + fireage_current so in-place release
+   # republishes (e.g. TMNP source added 2026-09-21) invalidate the store —
+   # tar_age(28 days) alone kept pre-TMNP snapshots and emptied Fig. 2 burns.
+   tar_target(
+     name = fireage_release_fp,
+     command = {
+       assets <- list_release_assets(
+         repo = ENVDATA_REPO,
+         tag = ENVDATA_RELEASE_TAGS$fireage
+       )
+       modis <- assets |>
+         dplyr::filter(grepl("^fireage_modis_[0-9]{8}\\.parquet$", .data$file_name)) |>
+         dplyr::mutate(file_date = parse_envdata_yyyymmdd(.data$file_name)) |>
+         dplyr::filter(!is.na(.data$file_date)) |>
+         dplyr::arrange(dplyr::desc(.data$file_date))
+       newest <- if (nrow(modis) >= 1L) {
+         modis$file_name[[1]]
+       } else {
+         stop("No fireage_modis_*.parquet on fireage release")
+       }
+       envdata_assets_fingerprint(
+         tag = ENVDATA_RELEASE_TAGS$fireage,
+         files = c("fireage_current.tif", newest)
+       )
+     }
+   ),
+   tar_target(
+     name = park_fire_history,
+     command = {
+       fireage_release_fp
+       get_fire_history(
+         temp_directory = temp_directory,
+         max_attempts = 10,
+         sleep_time = 10,
+         protected_areas = protected_areas,
+         n_recent = 24L,
+         n_years = 20L
+       )
+     }
+   ),
 
 
 

@@ -147,9 +147,11 @@ focal_park=protected_areas |>
 #    park_fires_file  <- paste("https://github.com/AdamWilsonLab/emma_report/releases/download/park_data/",
 #                              paste(park_no_spaces,"fires.gpkg",sep= "_"),sep = "")
 
-# Truncate paint ages at 20; keep Years_true for hover labels.
+# Truncate paint ages at 20; keep Years_true for labels.
+# Crop to the focal park (+10 km) — do not attach the full regional fire
+# polygon set (steals hover from ImageQuery and bloats every park map).
 
-  fires_wgs %>%
+  focal_fires %>%
     mutate(
       Years_true = Years,
       Years = pmin(Years, 20)
@@ -728,7 +730,9 @@ if (isTRUE(has_focal_invasives)) {
 }
 
 # One "Fire History" outline layer (age-bin stroke colors; single checkbox).
-# Filled burn polygons dropped (raster carries Veld Age).
+# Non-interactive: transparent fills still capture pointer events in Leaflet and
+# were replacing the combined ImageQuery hover with a one-line "N years since burn"
+# label. Veld-age values come from the raster query instead.
 if (inherits(fires_wgs_truncated, "sf") && nrow(fires_wgs_truncated) >= 1L) {
   fires_wgs_truncated <- fires_wgs_truncated %>%
     dplyr::mutate(
@@ -738,12 +742,11 @@ if (inherits(fires_wgs_truncated, "sf") && nrow(fires_wgs_truncated) >= 1L) {
     addPolygons(
       data = fires_wgs_truncated,
       color = ~outline_color,
-      fill = TRUE,
-      fillOpacity = 0,
+      fill = FALSE,
       stroke = TRUE,
-      label = ~paste(round(Years_true, 1), "years since burn"),
       weight = 1,
-      group = FIRE_HISTORY_GROUP
+      group = FIRE_HISTORY_GROUP,
+      options = leaflet::pathOptions(interactive = FALSE)
     )
 }
 
@@ -833,6 +836,8 @@ park_map <- park_map %>%
   fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])
 
 # One combined hover tooltip (EVI + deltas + true years since fire).
+# Bind to the default-visible monthly ΔEVI layer — leafem blanks the control
+# when the layerId group is hidden, and EVI (current) starts hidden.
 if (!is.null(park_query_brick)) {
   park_map <- tryCatch(
     {
@@ -840,7 +845,8 @@ if (!is.null(park_query_brick)) {
         leafem::addImageQuery(
           park_query_brick,
           type = "mousemove",
-          layerId = "evi_current",
+          layerId = PARK_MAP_QUERY_LAYER_ID,
+          group = EVI_DELTA_MONTHLY_GROUP,
           project = TRUE,
           digits = 3,
           position = "bottomleft",
@@ -897,8 +903,9 @@ cat(format_invasive_watch_md(invasive_watch))
     cell_ha <- prod(terra::res(most_recent_evi.tif)) / 1e4
   }
 
-  # Keep age + censor fields. fire_count == 0 / NA last_burn_date ⇒ right-censored
-  # (envdata lower-bounds age at record start 2000-01-01). Do not collapse to 20.
+  # Keep age + censor fields. Prefer is_censored when present; else
+  # fire_count == 0 / NA last_burn_date ⇒ right-censored (envdata lower-bounds
+  # age at record start 2000-01-01). Do not collapse unknown ages to 20.
 
   park_fire_history_focal <- park_fire_history %>%
     dplyr::filter(.data$cellID %in% focal_pids)
@@ -910,13 +917,14 @@ cat(format_invasive_watch_md(invasive_watch))
     park_fire_history_focal$fire_count <- NA_real_
   }
 
+  has_is_censored <- "is_censored" %in% names(park_fire_history_focal)
+  summarise_cols <- c(
+    "cellID", "date", "days_since_fire", "last_burn_date", "fire_count",
+    if (has_is_censored) "is_censored" else NULL
+  )
   focal_fires <-
     park_fire_history_focal %>%
-    dplyr::select(
-      dplyr::any_of(c(
-        "cellID", "date", "days_since_fire", "last_burn_date", "fire_count"
-      ))
-    ) %>%
+    dplyr::select(dplyr::any_of(summarise_cols)) %>%
     # Multiple sensors/sources can share cellID+date; keep youngest known age.
     dplyr::group_by(.data$cellID, .data$date) %>%
     dplyr::summarise(
@@ -924,7 +932,27 @@ cat(format_invasive_watch_md(invasive_watch))
       last_burn_date = suppressWarnings(max(.data$last_burn_date, na.rm = TRUE)),
       fire_count = suppressWarnings(max(.data$fire_count, na.rm = TRUE)),
       .groups = "drop"
-    ) %>%
+    )
+  if (isTRUE(has_is_censored)) {
+    # any non-censored sensor/source wins for the cell×date
+    ic <- park_fire_history_focal %>%
+      dplyr::group_by(.data$cellID, .data$date) %>%
+      dplyr::summarise(
+        is_censored = suppressWarnings(
+          min(as.numeric(.data$is_censored), na.rm = TRUE)
+        ),
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        is_censored = dplyr::if_else(
+          is.infinite(.data$is_censored),
+          NA_real_,
+          .data$is_censored
+        )
+      )
+    focal_fires <- dplyr::left_join(focal_fires, ic, by = c("cellID", "date"))
+  }
+  focal_fires <- focal_fires %>%
     dplyr::mutate(
       days_since_fire = dplyr::if_else(
         is.infinite(.data$days_since_fire),
@@ -940,10 +968,9 @@ cat(format_invasive_watch_md(invasive_watch))
         is.infinite(.data$fire_count),
         NA_real_,
         .data$fire_count
-      ),
-      censored = is.na(.data$last_burn_date) |
-        (!is.na(.data$fire_count) & .data$fire_count <= 0)
+      )
     )
+  focal_fires$censored <- fire_history_row_censored(focal_fires)
 
   if (nrow(focal_fires) == 0) {
     fire_dates <- unique(park_fire_history$date)
@@ -989,27 +1016,54 @@ cat(format_invasive_watch_md(invasive_watch))
   ff_known <- ff2 %>%
     dplyr::filter(!.data$censored, is.finite(.data$years_since_fire))
 
-  # Calendar-year burned area from year(last_burn_date) on the latest snapshot
-  latest_fire_date <- suppressWarnings(max(ff2$date, na.rm = TRUE))
-  if (is.finite(latest_fire_date)) {
-    area_by_year <- ff2 %>%
-      dplyr::filter(
-        .data$date == latest_fire_date,
-        !is.na(.data$last_burn_date),
-        !.data$censored
-      ) %>%
-      dplyr::mutate(
-        burn_year = lubridate::year(lubridate::as_date(.data$last_burn_date))
-      ) %>%
-      dplyr::count(.data$burn_year, name = "n_cells") %>%
-      dplyr::mutate(area_ha = .data$n_cells * cell_ha) %>%
-      dplyr::arrange(.data$burn_year)
-  } else {
-    area_by_year <- tibble::tibble(
-      burn_year = integer(),
-      n_cells = integer(),
-      area_ha = numeric()
+  # Calendar-year burned area: prefer fireage_current.tif (includes TMNP /
+  # CapeNature sources). Fall back to latest-per-cell parquet rows — never
+  # global date == max(date), which keeps only a few cells and empties Fig. 2.
+  area_by_year <- tibble::tibble(
+    burn_year = integer(),
+    n_cells = integer(),
+    area_ha = numeric()
+  )
+  fireage_for_burn <- tryCatch(
+    {
+      fp <- download_envdata_asset(
+        tag = ENVDATA_RELEASE_TAGS$fireage,
+        file = "fireage_current.tif",
+        dest_dir = "data/temp",
+        overwrite = FALSE
+      )
+      terra::rast(fp)
+    },
+    error = function(e) {
+      message("fireage_current for burned-area chart unavailable: ", conditionMessage(e))
+      NULL
+    }
+  )
+  if (!is.null(fireage_for_burn)) {
+    if (!terra::compareGeom(fireage_for_burn, domain, stopOnError = FALSE)) {
+      fireage_for_burn <- terra::resample(
+        fireage_for_burn, domain[[1]], method = "near"
+      )
+    }
+    park_masks_burn <- park_domain_masks(domain, focal_park)
+    park_mask_burn <- park_masks_burn[[1]]
+    area_by_year <- park_burned_area_by_year(
+      fireage_for_burn, park_mask_burn, cell_ha
     )
+  }
+  if (nrow(area_by_year) < 1L) {
+    latest_cells <- fire_history_latest_per_cell(ff2)
+    if (nrow(latest_cells) >= 1L) {
+      area_by_year <- latest_cells %>%
+        dplyr::filter(!.data$censored, !is.na(.data$last_burn_date)) %>%
+        dplyr::mutate(
+          burn_year = lubridate::year(lubridate::as_date(.data$last_burn_date))
+        ) %>%
+        dplyr::filter(is.finite(.data$burn_year)) %>%
+        dplyr::count(.data$burn_year, name = "n_cells") %>%
+        dplyr::mutate(area_ha = .data$n_cells * cell_ha) %>%
+        dplyr::arrange(.data$burn_year)
+    }
   }
 
   # Shared calendar-year x-axis for barplot, ridgeline, and censored strip.

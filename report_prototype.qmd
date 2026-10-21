@@ -601,45 +601,6 @@ invasive_watch <- invasive_watch_list(
 
 fires_wgs_truncated <- fires_wgs_truncated %>%
   mutate(outline_group = fire_outline_age_bin(Years_true))
-
-age_class <- list(
-  pct_lt5 = NA_real_, pct_5_10 = NA_real_, pct_10_20 = NA_real_,
-  pct_gt20 = NA_real_, pct_censored = NA_real_
-)
-tryCatch(
-  {
-    if (!exists("get_domain_raster", mode = "function")) {
-      source("R/envdata_contract.R", local = TRUE)
-    }
-    domain_e1 <- get_domain_raster(dest_dir = "data/temp", overwrite = FALSE)
-    park_masks_e1 <- park_domain_masks(domain_e1, focal_park)
-    park_mask_e1 <- park_masks_e1[[1]]
-    fireage_e1 <- tryCatch(
-      {
-        fp <- download_envdata_asset(
-          tag = ENVDATA_RELEASE_TAGS$fireage,
-          file = "fireage_current.tif",
-          dest_dir = "data/temp",
-          overwrite = FALSE
-        )
-        terra::rast(fp)
-      },
-      error = function(e) NULL
-    )
-    ysf_e1 <- years_since_fire.tif
-    if (!terra::compareGeom(ysf_e1, domain_e1, stopOnError = FALSE)) {
-      ysf_e1 <- terra::resample(ysf_e1, domain_e1[[1]], method = "near")
-    }
-    if (!is.null(fireage_e1) &&
-          !terra::compareGeom(fireage_e1, domain_e1, stopOnError = FALSE)) {
-      fireage_e1 <- terra::resample(fireage_e1, domain_e1[[1]], method = "near")
-    }
-    age_class <- age_class_structure(ysf_e1, fireage_e1, park_mask_e1)
-  },
-  error = function(e) {
-    message("Age-class prep failed: ", conditionMessage(e))
-  }
-)
 ```
 
 
@@ -989,7 +950,8 @@ cat(format_invasive_watch_md(invasive_watch))
     )
   }
 
-  # True ages for known burns only (no unknown→20 collapse)
+  # True ages for known burns only (no unknown→20 collapse). Parquet path is
+  # the fallback when fireage_current.tif is unavailable.
   ff2 <- focal_fires %>%
     dplyr::mutate(
       years_since_fire = .data$days_since_fire / 365.25,
@@ -1014,11 +976,13 @@ cat(format_invasive_watch_md(invasive_watch))
     )
 
   ff_known <- ff2 %>%
-    dplyr::filter(!.data$censored, is.finite(.data$years_since_fire))
+    dplyr::filter(!.data$censored, is.finite(.data$years_since_fire)) %>%
+    dplyr::select("year", "years_since_fire")
 
-  # Calendar-year burned area: prefer fireage_current.tif (includes TMNP /
-  # CapeNature sources). Fall back to latest-per-cell parquet rows — never
-  # global date == max(date), which keeps only a few cells and empties Fig. 2.
+  # Prefer fireage_current.tif for all three panels (includes TMNP /
+  # CapeNature). Parquet history mixes schemas (is_censored only on newest
+  # files) and most-recent-only joins, which emptied the ridge / stuck
+  # censored at ~100% through large burn years.
   area_by_year <- tibble::tibble(
     burn_year = integer(),
     n_cells = integer(),
@@ -1039,6 +1003,7 @@ cat(format_invasive_watch_md(invasive_watch))
       NULL
     }
   )
+  park_mask_burn <- NULL
   if (!is.null(fireage_for_burn)) {
     if (!terra::compareGeom(fireage_for_burn, domain, stopOnError = FALSE)) {
       fireage_for_burn <- terra::resample(
@@ -1063,6 +1028,29 @@ cat(format_invasive_watch_md(invasive_watch))
         dplyr::count(.data$burn_year, name = "n_cells") %>%
         dplyr::mutate(area_ha = .data$n_cells * cell_ha) %>%
         dplyr::arrange(.data$burn_year)
+    }
+  }
+
+  # Ridge + censored from the same snapshot as the burn bars when possible.
+  if (!is.null(fireage_for_burn) && !is.null(park_mask_burn)) {
+    year_lo_snap <- 2000L
+    year_hi_snap <- as.integer(lubridate::year(Sys.Date()))
+    if (nrow(area_by_year) >= 1L) {
+      year_lo_snap <- min(year_lo_snap, min(area_by_year$burn_year, na.rm = TRUE))
+      year_hi_snap <- max(year_hi_snap, max(area_by_year$burn_year, na.rm = TRUE))
+    }
+    if (nrow(ff2) >= 1L && any(is.finite(ff2$year))) {
+      year_hi_snap <- max(year_hi_snap, max(ff2$year, na.rm = TRUE))
+    }
+    series_years <- seq.int(as.integer(year_lo_snap), as.integer(year_hi_snap))
+    veg_series <- park_veg_age_series_from_fireage(
+      fireage_for_burn, park_mask_burn, series_years
+    )
+    if (nrow(veg_series$censored_summary) >= 1L) {
+      censored_summary <- veg_series$censored_summary
+    }
+    if (nrow(veg_series$known_ages) >= 1L) {
+      ff_known <- veg_series$known_ages
     }
   }
 
@@ -1223,11 +1211,7 @@ cat(format_invasive_watch_md(invasive_watch))
 
 ```
 
-Figure 2. Burned area by year; true veld-age distribution for known burns; share of park cells that are censored / never-burned. Display from 2000.
-
-```{r age-class-strip, echo=FALSE, results='asis'}
-cat(format_age_class_md(age_class))
-```
+Figure 2. Burned area by year; true veld-age distribution for known burns; share of park cells that are censored / never-burned. Display from 2000. Ages and censored share are reconstructed from the current last-burn snapshot (same source as the burn bars).
 
 ```{r vegetation ages, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=F}
   

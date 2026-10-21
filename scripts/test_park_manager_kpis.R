@@ -62,13 +62,20 @@ stopifnot(identical(fire_history_outline_color(25), "#fdbb84"))
 stopifnot(length(fire_history_outline_color(c(2, 7, 15))) == 3L)
 stopifnot(identical(PARK_MAP_QUERY_LAYER_ID, "evi_delta_monthly"))
 
-# Censor flag: prefer is_censored; else last_burn / fire_count
+# Censor flag: prefer is_censored; NA is_censored → last_burn / fire_count
+# (mixed-schema parquet binds leave NA on older annual files).
 cens_ic <- fire_history_row_censored(data.frame(
   is_censored = c(0, 1, NA),
   last_burn_date = c(100, 100, 100),
   fire_count = c(1, 1, 1)
 ))
-stopifnot(identical(as.logical(cens_ic), c(FALSE, TRUE, TRUE)))
+stopifnot(identical(as.logical(cens_ic), c(FALSE, TRUE, FALSE)))
+cens_ic_na_burn <- fire_history_row_censored(data.frame(
+  is_censored = c(0, 1, NA),
+  last_burn_date = c(100, 100, NA),
+  fire_count = c(1, 1, 1)
+))
+stopifnot(identical(as.logical(cens_ic_na_burn), c(FALSE, TRUE, TRUE)))
 cens_fb <- fire_history_row_censored(data.frame(
   last_burn_date = c(100, NA, 0),
   fire_count = c(2, 1, 3)
@@ -107,6 +114,20 @@ if (requireNamespace("terra", quietly = TRUE)) {
   stopifnot(nrow(aby) == 2L)
   stopifnot(all(c(2015L, 2020L) %in% aby$burn_year))
   stopifnot(abs(sum(aby$area_ha) - 50) < 1e-9)
+
+  # Veg-age series: 2014 still censored for 2020 burn; 2015 unlocks one cell;
+  # 2020 unlocks both known burns; never-burned cell stays censored.
+  ser <- park_veg_age_series_from_fireage(fireage, mask, years = c(2014L, 2015L, 2020L))
+  stopifnot(nrow(ser$censored_summary) == 3L)
+  c14 <- ser$censored_summary$fraction_censored[ser$censored_summary$year == 2014L]
+  c15 <- ser$censored_summary$fraction_censored[ser$censored_summary$year == 2015L]
+  c20 <- ser$censored_summary$fraction_censored[ser$censored_summary$year == 2020L]
+  stopifnot(abs(c14 - 1) < 1e-9)           # 3 park cells, 0 known
+  stopifnot(abs(c15 - (2 / 3)) < 1e-9)     # 1 known (2015 burn)
+  stopifnot(abs(c20 - (1 / 3)) < 1e-9)     # 2 known, 1 never-burned
+  stopifnot(nrow(ser$known_ages[ser$known_ages$year == 2014L, , drop = FALSE]) == 0L)
+  stopifnot(nrow(ser$known_ages[ser$known_ages$year == 2015L, , drop = FALSE]) == 1L)
+  stopifnot(nrow(ser$known_ages[ser$known_ages$year == 2020L, , drop = FALSE]) == 2L)
 }
 
 # --- Invasive watch list -----------------------------------------------------

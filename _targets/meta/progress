@@ -1,12 +1,10 @@
 name|type|parent|branches|progress
 env_files|stem|env_files|0|skipped
-fireage_release_fp|stem|fireage_release_fp|0|dispatched
-fireage_release_fp|stem|fireage_release_fp|0|completed
+fireage_release_fp|stem|fireage_release_fp|0|skipped
 protected_areas|stem|protected_areas|0|skipped
 spatial_outputs|stem|spatial_outputs|0|skipped
 model_results|stem|model_results|0|skipped
-report_location|stem|report_location|0|dispatched
-report_location|stem|report_location|0|completed
+report_location|stem|report_location|0|skipped
 data_freshness|stem|data_freshness|0|skipped
 weather_release_fp|stem|weather_release_fp|0|skipped
 model_prediction|stem|model_prediction|0|skipped
@@ -15,8 +13,7 @@ inat_data|stem|inat_data|0|skipped
 mean_evi.tif|stem|mean_evi.tif|0|skipped
 years_since_fire.tif|stem|years_since_fire.tif|0|skipped
 most_recent_evi_file|stem|most_recent_evi_file|0|skipped
-park_fire_history|stem|park_fire_history|0|dispatched
-park_fire_history|stem|park_fire_history|0|completed
+park_fire_history|stem|park_fire_history|0|skipped
 park_monthly_delta_evi_series|stem|park_monthly_delta_evi_series|0|skipped
 report_qmd_dir|stem|report_qmd_dir|0|dispatched
 report_qmd_dir|stem|report_qmd_dir|0|completed

@@ -336,7 +336,7 @@ weather_climatology_x_scale <- function(window_start, window_end) {
 #' @param layers list from [weather_climatology_layers()]
 #' @param ylab y-axis label
 #' @param title plot title
-#' @param log1p_y if TRUE, plot log1p(value) with expm1 tick labels (precip)
+#' @param log1p_y if TRUE, plot log1p(value) with nice mm tick labels (precip)
 #' @param show_x_axis if FALSE, hide x tick labels/ticks (for upper stacked panel)
 #' @param show_subtitle if FALSE, omit the envelope subtitle (combined caption)
 #' @param x_limits optional length-2 Date vector overriding layer window limits
@@ -494,21 +494,28 @@ plot_weather_climatology <- function(layers,
   }
 
   if (isTRUE(log1p_y)) {
+    # Fixed mm candidates; keep only those within observed data (no empty
+    # high ticks when the series tops out well below 1000 mm).
+    mm_breaks <- c(0, 5, 10, 50, 100, 500, 1000)
+    y_vals <- c(
+      if (nrow(years) >= 1L) years$value else numeric(),
+      if (nrow(env) >= 1L) {
+        c(env$p05, env$p25, env$p50, env$p75, env$p95)
+      } else {
+        numeric()
+      },
+      if (nrow(cur) >= 1L) cur$value else numeric()
+    )
+    y_vals <- y_vals[is.finite(y_vals)]
+    y_max <- if (length(y_vals)) max(y_vals) else 0
+    kept <- mm_breaks[mm_breaks <= y_max]
+    if (!length(kept)) {
+      kept <- 0
+    }
     p <- p +
       ggplot2::scale_y_continuous(
-        labels = function(x) {
-          pretty_vals <- expm1(x)
-          ifelse(
-            abs(pretty_vals) >= 10,
-            format(round(pretty_vals), scientific = FALSE, trim = TRUE),
-            format(
-              round(pretty_vals, 1),
-              scientific = FALSE,
-              trim = TRUE,
-              nsmall = 1
-            )
-          )
-        }
+        breaks = log1p(kept),
+        labels = kept
       )
   }
 

@@ -620,7 +620,8 @@ cat(format_delta_evi_kpi_md(
 
 ```{r evi_and_burns, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE}
 
-# Default basemap: World Imagery (NatGeo remains available as alternate).
+# Default basemap: Esri Dark Gray Canvas (webmap 1970c1995b8f44749f4b9b6e81b5ba45).
+# World Imagery / NatGeo remain available as alternates.
 # Combined hover query uses true ages (not the paint-truncated veld-age layer).
 park_query_brick <- tryCatch(
   park_map_query_brick(
@@ -640,6 +641,17 @@ park_query_brick <- tryCatch(
 # whenever overlays are toggled. Products: ΔEVI monthly = current − same-month
 # fuse-then-mean; ΔEVI long term = current − all-date fuse-then-mean.
 park_map <- leaflet(data = focal_wgs) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution = "Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
   addPolygons(
@@ -789,7 +801,7 @@ park_map <- park_map %>%
     group = VELD_AGE_GROUP
   ) %>%
   addLayersControl(
-    baseGroups = c("World Imagery", "NatGeo"),
+    baseGroups = c("Dark Gray Canvas", "World Imagery", "NatGeo"),
     overlayGroups = overlay_groups,
     options = layersControlOptions(collapsed = FALSE),
     position = "topleft"
@@ -1350,6 +1362,17 @@ plot_weather_climatology_combo(precip_clim, temp_clim)
 ```{r NDWI_plot, fig.width = 10, fig.height = 7, echo = FALSE, warning = FALSE, message = FALSE, eval=FALSE, include=FALSE}
 ## Drought Indices
   leaflet(data = focal_wgs) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution = "Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
     #addProviderTiles("NASAGIBS.ModisTerraTrueColorCR", group = "True Colors") %>%
     addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
@@ -1372,7 +1395,7 @@ plot_weather_climatology_combo(precip_clim, temp_clim)
             opacity = 1,
             title = "NDWI") %>%
     addLayersControl(
-    baseGroups = c("NatGeo","World Imagery"),
+    baseGroups = c("Dark Gray Canvas", "NatGeo", "World Imagery"),
     overlayGroups = c("NDWI", "Park"),
     options = layersControlOptions(collapsed = FALSE),position = "topright") %>%
   fitBounds(bbox[1], bbox[2], bbox[3], bbox[4])

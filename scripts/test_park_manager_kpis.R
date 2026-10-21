@@ -178,7 +178,8 @@ fw_short$mean_precip_mm[
   fw_short$date_time >= (end_data - 364L)
 ] <- dry_rate * 0.5
 anom_stale <- weather_12mo_anomaly(fw_short, as_of = as.Date("2026-10-21"))
-stopifnot(identical(anom_stale$as_of, end_data))
+# Compare calendar day (not identical(): Date integer/double storage differs)
+stopifnot(as.character(anom_stale$as_of) == as.character(end_data))
 stopifnot(is.finite(anom_stale$precip_12mo_mm), anom_stale$precip_12mo_mm > 50)
 stopifnot(is.finite(anom_stale$precip_long_mean_mm))
 # Must not collapse to precip_12mo≈0 → anomaly≈−long_mean

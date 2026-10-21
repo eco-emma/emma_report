@@ -730,11 +730,14 @@ weather_12mo_anomaly <- function(focal_weather,
 
   # Clamp as_of to latest observation — avoids empty recent windows when the
   # caller passes Sys.Date() but GSOD ends months earlier (the ±ann bug).
-  max_date <- max(st$date_time, na.rm = TRUE)
-  end <- as.Date(as_of)
-  if (is.finite(max_date) && (!is.finite(end) || end > max_date)) {
-    end <- as.Date(max_date)
+  # Normalize via as.character so Date storage mode (integer vs double) and
+  # tzone attrs never trip identical() / downstream comparisons.
+  max_date <- suppressWarnings(as.Date(max(st$date_time, na.rm = TRUE)))
+  end <- suppressWarnings(as.Date(as_of))
+  if (!is.na(max_date) && (is.na(end) || end > max_date)) {
+    end <- max_date
   }
+  end <- as.Date(format(end, "%Y-%m-%d"))
   out$as_of <- end
   # Inclusive 365-day window matching weather_climatology_layers()
   window_start <- end - 364L

@@ -6,7 +6,8 @@ spatial_outputs|stem|spatial_outputs|0|skipped
 model_results|stem|model_results|0|skipped
 report_location|stem|report_location|0|dispatched
 report_location|stem|report_location|0|completed
-data_freshness|stem|data_freshness|0|skipped
+data_freshness|stem|data_freshness|0|dispatched
+data_freshness|stem|data_freshness|0|completed
 weather_release_fp|stem|weather_release_fp|0|skipped
 model_prediction|stem|model_prediction|0|skipped
 remnants|stem|remnants|0|skipped

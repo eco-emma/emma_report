@@ -995,31 +995,16 @@ fire_history_row_censored <- function(df) {
   if (n < 1L) {
     return(logical())
   }
+  # When is_censored is present with any non-NA values, trust it. NA in that
+  # column is treated as censored (conservative); do not mix with last_burn
+  # fallback per-row — that made c(0,1,NA) → c(FALSE,TRUE,FALSE) and broke CI.
   if ("is_censored" %in% names(df) && !all(is.na(df$is_censored))) {
     ic <- df$is_censored
     if (is.numeric(ic)) {
-      # NA is_censored → fall through to last_burn / fire_count for that row
-      out <- !is.na(ic) & ic != 0
-      need_fb <- is.na(ic)
-      if (any(need_fb)) {
-        lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
-        fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
-        lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
-        fc_zero <- !is.na(fc) & fc <= 0
-        out[need_fb] <- lbd_missing[need_fb] | fc_zero[need_fb]
-      }
-      return(out)
+      return(is.na(ic) | ic != 0)
     }
     out <- as.logical(ic)
-    need_fb <- is.na(out)
-    out[need_fb] <- FALSE
-    if (any(need_fb)) {
-      lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
-      fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
-      lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
-      fc_zero <- !is.na(fc) & fc <= 0
-      out[need_fb] <- lbd_missing[need_fb] | fc_zero[need_fb]
-    }
+    out[is.na(out)] <- TRUE
     return(out)
   }
   lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)

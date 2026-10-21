@@ -114,6 +114,16 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
     log1p_y = FALSE
   )
   stopifnot(inherits(p2, "ggplot"))
+  # Combined two-panel: shared x window + cowplot stack
+  stopifnot(identical(layers$window_start, layers_t$window_start))
+  stopifnot(identical(layers$window_end, layers_t$window_end))
+  if (requireNamespace("cowplot", quietly = TRUE)) {
+    combo <- plot_weather_climatology_combo(layers, layers_t)
+    stopifnot(!is.null(combo))
+  }
+  # Shared x-scale helper returns a Scale object
+  xs <- weather_climatology_x_scale(layers$window_start, layers$window_end)
+  stopifnot(inherits(xs, "Scale"))
 }
 
 # Empty input soft-fails

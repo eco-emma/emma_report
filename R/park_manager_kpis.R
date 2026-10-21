@@ -630,11 +630,50 @@ invasive_watch_list <- function(focal_invasives) {
     dplyr::arrange(dplyr::desc(.data$n), .data$genus)
 }
 
+#' Shift dates back by an integer number of years (month-day preserving).
+#'
+#' Local copy so KPI helpers do not depend on weather_climatology.R at source.
+.kpi_shift_dates_years <- function(dates, n_years) {
+  dates <- as.Date(dates)
+  if (as.integer(n_years) == 0L) {
+    return(dates)
+  }
+  if (requireNamespace("lubridate", quietly = TRUE)) {
+    return(lubridate::`%m-%`(dates, lubridate::years(as.integer(n_years))))
+  }
+  lt <- as.POSIXlt(dates)
+  lt$year <- lt$year - as.integer(n_years)
+  as.Date(lt)
+}
+
+#' Sum of precip on `[window_start, window_end]` (observed days only).
+.kpi_window_precip_sum <- function(daily, window_start, window_end,
+                                   min_days = 60L) {
+  window_start <- as.Date(window_start)
+  window_end <- as.Date(window_end)
+  chunk <- daily[
+    daily$date >= window_start & daily$date <= window_end,
+    ,
+    drop = FALSE
+  ]
+  if (nrow(chunk) < as.integer(min_days)) {
+    return(NA_real_)
+  }
+  sum(chunk$precip, na.rm = TRUE)
+}
+
 #' 12-month precip / temp anomaly vs long-term mean (rank **5**).
 #'
-#' Uses the nearest station (first in `closest_stations` / first column after
-#' mean) when multiple stations are present. Long mean = all available history
-#' for the same station (GSOD rows from ≥2000 when published in emma_envdata).
+#' Uses the nearest station (first in `closest_stations` / most complete) when
+#' multiple stations are present. Window matches park climate figures: trailing
+#' 365 days ending at `as_of`, clamped to the latest station date so a stale
+#' `Sys.Date()` cannot empty the recent window.
+#'
+#' Precip long mean = mean of prior complete-enough trailing 12-mo window
+#' totals (same slice family as the cumulative climatology envelope), **not**
+#' an annualised rate of the full-record sum. Anomaly = current 12-mo total −
+#' that mean (negative ⇒ drier than prior windows; matches a red cumulative
+#' curve below the black median).
 weather_12mo_anomaly <- function(focal_weather,
                                  closest_stations = character(0),
                                  as_of = Sys.Date()) {
@@ -688,8 +727,17 @@ weather_12mo_anomaly <- function(focal_weather,
   }
   out$has_weather <- TRUE
   out$station_name <- stn
+
+  # Clamp as_of to latest observation — avoids empty recent windows when the
+  # caller passes Sys.Date() but GSOD ends months earlier (the ±ann bug).
+  max_date <- max(st$date_time, na.rm = TRUE)
   end <- as.Date(as_of)
-  start_12 <- seq.Date(end, by = "-12 months", length.out = 2L)[[2]]
+  if (is.finite(max_date) && (!is.finite(end) || end > max_date)) {
+    end <- as.Date(max_date)
+  }
+  out$as_of <- end
+  # Inclusive 365-day window matching weather_climatology_layers()
+  window_start <- end - 364L
 
   precip_col <- if ("mean_precip_mm" %in% names(st)) {
     "mean_precip_mm"
@@ -707,17 +755,41 @@ weather_12mo_anomaly <- function(focal_weather,
   }
 
   if (!is.na(precip_col)) {
-    # Rolling 12-mo sum vs mean of all trailing 12-mo windows in history
     daily <- st[, c("date_time", precip_col)]
     names(daily) <- c("date", "precip")
     daily <- daily[is.finite(daily$precip) & daily$precip >= 0, , drop = FALSE]
     if (nrow(daily) >= 30L) {
-      recent <- daily[daily$date > start_12 & daily$date <= end, , drop = FALSE]
-      out$precip_12mo_mm <- sum(recent$precip, na.rm = TRUE)
-      # Long mean: average annual precip from full record (scale to 365 days)
-      n_days <- as.numeric(diff(range(daily$date))) + 1
-      if (is.finite(n_days) && n_days >= 60) {
-        ann <- sum(daily$precip, na.rm = TRUE) * (365.25 / n_days)
+      recent_sum <- .kpi_window_precip_sum(
+        daily,
+        window_start,
+        end,
+        min_days = 30L
+      )
+      if (is.finite(recent_sum)) {
+        out$precip_12mo_mm <- recent_sum
+      }
+      # Prior trailing 12-mo totals (exclude current window), same family as
+      # climatology grey lines / median envelope.
+      min_date <- min(daily$date)
+      hist_totals <- numeric()
+      for (i in seq_len(80L)) {
+        hist_end <- .kpi_shift_dates_years(end, i)
+        hist_start <- hist_end - 364L
+        if (is.na(hist_start) || hist_start < min_date) {
+          break
+        }
+        tot <- .kpi_window_precip_sum(
+          daily,
+          hist_start,
+          hist_end,
+          min_days = 60L
+        )
+        if (is.finite(tot)) {
+          hist_totals <- c(hist_totals, tot)
+        }
+      }
+      if (length(hist_totals) >= 1L && is.finite(out$precip_12mo_mm)) {
+        ann <- mean(hist_totals)
         out$precip_long_mean_mm <- ann
         out$precip_anomaly_mm <- out$precip_12mo_mm - ann
         if (is.finite(ann) && abs(ann) > 1e-6) {
@@ -732,10 +804,38 @@ weather_12mo_anomaly <- function(focal_weather,
     names(daily_t) <- c("date", "temp")
     daily_t <- daily_t[is.finite(daily_t$temp), , drop = FALSE]
     if (nrow(daily_t) >= 30L) {
-      recent_t <- daily_t[daily_t$date > start_12 & daily_t$date <= end, ,
-                          drop = FALSE]
-      out$temp_12mo_c <- mean(recent_t$temp, na.rm = TRUE)
-      out$temp_long_mean_c <- mean(daily_t$temp, na.rm = TRUE)
+      recent_t <- daily_t[
+        daily_t$date >= window_start & daily_t$date <= end,
+        ,
+        drop = FALSE
+      ]
+      if (nrow(recent_t) >= 30L) {
+        out$temp_12mo_c <- mean(recent_t$temp, na.rm = TRUE)
+      }
+      # Prior-window means (exclude current), then average those means
+      min_date_t <- min(daily_t$date)
+      hist_means <- numeric()
+      for (i in seq_len(80L)) {
+        hist_end <- .kpi_shift_dates_years(end, i)
+        hist_start <- hist_end - 364L
+        if (is.na(hist_start) || hist_start < min_date_t) {
+          break
+        }
+        chunk <- daily_t[
+          daily_t$date >= hist_start & daily_t$date <= hist_end,
+          ,
+          drop = FALSE
+        ]
+        if (nrow(chunk) >= 60L) {
+          hist_means <- c(hist_means, mean(chunk$temp, na.rm = TRUE))
+        }
+      }
+      if (length(hist_means) >= 1L) {
+        out$temp_long_mean_c <- mean(hist_means)
+      } else {
+        # Fallback when history is too short for prior windows
+        out$temp_long_mean_c <- mean(daily_t$temp, na.rm = TRUE)
+      }
       if (is.finite(out$temp_12mo_c) && is.finite(out$temp_long_mean_c)) {
         out$temp_anomaly_c <- out$temp_12mo_c - out$temp_long_mean_c
       }
@@ -1293,7 +1393,7 @@ format_weather_anomaly_md <- function(anom) {
   }
   precip_txt <- if (is.finite(anom$precip_anomaly_mm)) {
     sprintf(
-      "precip 12-mo **%+.0f mm** vs long-term annualised mean (%.0f mm)",
+      "precip 12-mo **%+.0f mm** vs mean of prior 12-mo totals (%.0f mm)",
       anom$precip_anomaly_mm,
       anom$precip_long_mean_mm
     )
@@ -1302,7 +1402,7 @@ format_weather_anomaly_md <- function(anom) {
   }
   temp_txt <- if (is.finite(anom$temp_anomaly_c)) {
     sprintf(
-      "temp 12-mo mean **%+.2f °C** vs long-term mean (%.2f °C)",
+      "temp 12-mo mean **%+.2f °C** vs mean of prior 12-mo windows (%.2f °C)",
       anom$temp_anomaly_c,
       anom$temp_long_mean_c
     )
@@ -1314,9 +1414,10 @@ format_weather_anomaly_md <- function(anom) {
     "**Rainfall & temperature context** (nearest station: ",
     anom$station_name %||% "—", ") — ",
     precip_txt, "; ", temp_txt, ". ",
-    "*Long mean uses all GSOD rows from ≥2000 published in ",
-    "`weather_data` (span varies by park/station). Pair with monthly ΔEVI when ",
-    "interpreting brown anomalies.*\n\n",
+    "*Trailing 12 months end at the latest GSOD date for this station; ",
+    "long mean is the average of prior complete 12-mo windows (≥2000 when ",
+    "published in `weather_data`). Pair with the climate figure and monthly ",
+    "ΔEVI when interpreting brown anomalies.*\n\n",
     "</div>\n"
   )
 }

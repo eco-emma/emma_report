@@ -160,6 +160,36 @@ stopifnot(isTRUE(anom$has_weather))
 stopifnot(is.finite(anom$precip_anomaly_mm), is.finite(anom$temp_anomaly_c))
 md_w <- format_weather_anomaly_md(anom)
 stopifnot(grepl("Rainfall", md_w), grepl("TEST_STN", md_w))
+stopifnot(grepl("prior 12-mo", md_w))
+
+# Regression: stale Sys.Date()-like as_of after data ends must NOT yield
+# precip_12mo ≈ 0 and anomaly ≈ −annual_mean (the “−416 vs 416” bug).
+end_data <- as.Date("2025-08-24")
+dry_rate <- 416 / 365.25
+fw_short <- data.frame(
+  date_time = seq.Date(as.Date("2022-01-01"), end_data, by = "day"),
+  station_name = "STALE_ASOF",
+  mean_precip_mm = dry_rate,
+  temp_c = 18,
+  stringsAsFactors = FALSE
+)
+# Current year deliberately half of prior years → negative anomaly, not −ann
+fw_short$mean_precip_mm[
+  fw_short$date_time >= (end_data - 364L)
+] <- dry_rate * 0.5
+anom_stale <- weather_12mo_anomaly(fw_short, as_of = as.Date("2026-10-21"))
+stopifnot(identical(anom_stale$as_of, end_data))
+stopifnot(is.finite(anom_stale$precip_12mo_mm), anom_stale$precip_12mo_mm > 50)
+stopifnot(is.finite(anom_stale$precip_long_mean_mm))
+# Must not collapse to precip_12mo≈0 → anomaly≈−long_mean
+stopifnot(
+  abs(anom_stale$precip_anomaly_mm + anom_stale$precip_long_mean_mm) > 50
+)
+stopifnot(anom_stale$precip_anomaly_mm < 0)
+# Current ≈ half of prior annual totals
+stopifnot(
+  abs(anom_stale$precip_12mo_mm / anom_stale$precip_long_mean_mm - 0.5) < 0.15
+)
 
 # --- KPI / age-class markdown ------------------------------------------------
 st_na <- evaluate_stress_flag(numeric(0))

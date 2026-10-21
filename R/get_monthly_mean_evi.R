@@ -107,6 +107,72 @@ list_vi_parquet_assets <- function(env_files = NULL,
   vi_files
 }
 
+#' Whether parquet row dates match the release filename composite date
+#'
+#' Historical `vi_*_YYYYMMDD.parquet` assets on emma_envdata are often
+#' byte-duplicates of a July–August template with rewritten years: the
+#' filename month is wrong and hundreds of “distinct” composites share the
+#' same values. Using those for fuse-then-mean made monthly climatology ≈
+#' all-history mean, so park-map ΔEVI (monthly) and ΔEVI (long term) looked
+#' identical. Require a majority of rows in the filename calendar month+year
+#' or within `window_days` of the filename date.
+vi_parquet_content_matches_file_date <- function(dates,
+                                                 file_date,
+                                                 min_frac = 0.5,
+                                                 window_days = 16L) {
+  dates <- as.Date(dates)
+  file_date <- as.Date(file_date)[[1]]
+  if (!length(dates) || is.na(file_date)) {
+    return(FALSE)
+  }
+  ok <- !is.na(dates)
+  if (!any(ok)) {
+    return(FALSE)
+  }
+  dates <- dates[ok]
+  frac_month <- mean(
+    lubridate::month(dates) == lubridate::month(file_date) &
+      lubridate::year(dates) == lubridate::year(file_date)
+  )
+  frac_near <- mean(abs(as.numeric(dates - file_date)) <= as.integer(window_days))
+  isTRUE(frac_month >= min_frac || frac_near >= min_frac)
+}
+
+#' Add one fused (pid, date) table into running sum/count (unique pids per date)
+accumulate_fused_evi_means <- function(sum_vec, count_vec, fused) {
+  if (!nrow(fused)) {
+    return(list(sum_vec = sum_vec, count_vec = count_vec))
+  }
+  fused <- fused[!is.na(fused$pid) & !is.na(fused$date) & !is.na(fused$value),
+                 , drop = FALSE]
+  if (!nrow(fused)) {
+    return(list(sum_vec = sum_vec, count_vec = count_vec))
+  }
+  for (fd in sort(unique(fused$date))) {
+    sub <- fused[fused$date == fd, , drop = FALSE]
+    keys <- as.character(sub$pid)
+    if (anyDuplicated(keys)) {
+      # fuse_evi_by_pid_date should already be unique per (pid, date)
+      sub <- sub[!duplicated(sub$pid), , drop = FALSE]
+      keys <- as.character(sub$pid)
+    }
+    known <- keys %in% names(sum_vec)
+    if (any(!known)) {
+      sum_vec <- c(sum_vec, stats::setNames(sub$value[!known], keys[!known]))
+      count_vec <- c(
+        count_vec,
+        stats::setNames(rep(1, sum(!known)), keys[!known])
+      )
+    }
+    if (any(known)) {
+      k <- keys[known]
+      sum_vec[k] <- sum_vec[k] + sub$value[known]
+      count_vec[k] <- count_vec[k] + 1
+    }
+  }
+  list(sum_vec = sum_vec, count_vec = count_vec)
+}
+
 #' Download parquet assets and return fused-then-mean EVI SpatRaster
 #'
 #' For each (pid, composite_date): priority-fill sensors 4→3→1→2, then
@@ -114,10 +180,27 @@ list_vi_parquet_assets <- function(env_files = NULL,
 #'
 #' Processes one composite date at a time (running sum/count) so all-history
 #' means do not load ~3 GB of parquets into memory at once.
+#'
+#' Skips release assets whose internal `date` column does not match the
+#' filename composite (corrupt historical duplicates). When `current_month`
+#' is set, also keeps only rows in that calendar month after the alignment
+#' check (row-level month filter; filename filter alone is not enough).
 evi_mean_from_parquet_files <- function(vi_files,
-                                        temp_directory = "data/temp/") {
+                                        temp_directory = "data/temp/",
+                                        current_month = NULL) {
   if (!nrow(vi_files)) {
     stop("No VI parquet assets to aggregate")
+  }
+
+  month_int <- NULL
+  if (!is.null(current_month)) {
+    month_int <- as.integer(current_month)[[1]]
+    if (is.na(month_int) || month_int < 1L || month_int > 12L) {
+      stop(
+        "evi_mean_from_parquet_files(): current_month must be 1–12; got ",
+        paste(deparse(current_month), collapse = " ")
+      )
+    }
   }
 
   n_files <- nrow(vi_files)
@@ -160,10 +243,17 @@ evi_mean_from_parquet_files <- function(vi_files,
   # Running sum / count of fused values per pid (fuse per date first).
   sum_vec <- numeric(0)
   count_vec <- numeric(0)
+  n_skipped_misaligned <- 0L
+  n_used_files <- 0L
+  n_fused_dates <- 0L
 
   dates <- sort(unique(vi_files$file_date))
   n_dates <- length(dates)
-  message("Fuse-then-mean over ", n_dates, " composite date(s)")
+  message(
+    "Fuse-then-mean over ", n_dates, " filename composite date(s)",
+    if (!is.null(month_int)) paste0(" (row month=", month_int, ")") else "",
+    "; skip misaligned parquet content"
+  )
   t0 <- proc.time()[["elapsed"]]
   for (di in seq_along(dates)) {
     d <- dates[[di]]
@@ -182,38 +272,54 @@ evi_mean_from_parquet_files <- function(vi_files,
     if (!"date" %in% names(raw)) {
       raw$date <- d
     }
+    raw$date <- as.Date(raw$date)
+    if (!vi_parquet_content_matches_file_date(raw$date, d)) {
+      n_skipped_misaligned <- n_skipped_misaligned + length(day_files)
+      next
+    }
+    if (!is.null(month_int)) {
+      raw <- raw[as.integer(lubridate::month(raw$date)) == month_int, , drop = FALSE]
+      if (!nrow(raw)) {
+        next
+      }
+    }
     fused <- fuse_evi_by_pid_date(raw)
     fused <- fused[!is.na(fused$value), , drop = FALSE]
     if (!nrow(fused)) {
       next
     }
-    keys <- as.character(fused$pid)
-    known <- keys %in% names(sum_vec)
-    if (any(!known)) {
-      sum_vec <- c(sum_vec, stats::setNames(fused$value[!known], keys[!known]))
-      count_vec <- c(
-        count_vec,
-        stats::setNames(rep(1, sum(!known)), keys[!known])
-      )
-    }
-    if (any(known)) {
-      k <- keys[known]
-      sum_vec[k] <- sum_vec[k] + fused$value[known]
-      count_vec[k] <- count_vec[k] + 1
-    }
-    rm(raw, fused)
+    n_used_files <- n_used_files + length(day_files)
+    n_fused_dates <- n_fused_dates + length(unique(fused$date))
+    acc <- accumulate_fused_evi_means(sum_vec, count_vec, fused)
+    sum_vec <- acc$sum_vec
+    count_vec <- acc$count_vec
+    rm(raw, fused, acc)
     if (di == 1L || di == n_dates || di %% 25L == 0L) {
       elapsed <- proc.time()[["elapsed"]] - t0
       message(
-        "Fused ", di, "/", n_dates, " dates (",
+        "Fused ", di, "/", n_dates, " filename dates (",
         round(elapsed, 1), "s elapsed, ",
-        length(sum_vec), " pids)"
+        length(sum_vec), " pids; skipped_misaligned_files=",
+        n_skipped_misaligned, ")"
       )
     }
   }
 
+  message(
+    "VI parquet fuse-then-mean kept ", n_used_files, " aligned file(s), ",
+    n_fused_dates, " internal date(s); skipped ", n_skipped_misaligned,
+    " misaligned file(s)"
+  )
+
   if (!length(sum_vec)) {
-    stop("VI parquet assets produced no fused values")
+    stop(
+      "VI parquet assets produced no fused values",
+      if (n_skipped_misaligned > 0L) {
+        paste0(" (skipped ", n_skipped_misaligned, " misaligned files)")
+      } else {
+        ""
+      }
+    )
   }
   mean_values <- data.frame(
     pid = as.integer(names(sum_vec)),
@@ -292,8 +398,12 @@ get_monthly_mean_evi.tif <- function(env_files,
     paste(families, collapse = "+"),
     " (", nrow(vi_files), " parquet files, ",
     length(unique(vi_files$file_date)), " composite dates; ",
-    "monthly_climatology_v2_month_filter)"
+    "monthly_climatology_v3_content_align)"
   )
 
-  evi_mean_from_parquet_files(vi_files, temp_directory = temp_directory)
+  evi_mean_from_parquet_files(
+    vi_files,
+    temp_directory = temp_directory,
+    current_month = month_int
+  )
 }

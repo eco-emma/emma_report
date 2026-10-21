@@ -30,7 +30,8 @@ get_mean_evi.tif <- function(env_files,
     "Long-term mean EVI fuse-then-mean using: ",
     paste(families, collapse = "+"),
     " (", nrow(vi_files), " parquet files, ",
-    n_dates, " composite dates across ", n_months, " calendar months)"
+    n_dates, " composite dates across ", n_months, " calendar months; ",
+    "longterm_climatology_v3_content_align)"
   )
   if (n_months < 2L && n_dates >= 24L) {
     warning(
@@ -40,5 +41,9 @@ get_mean_evi.tif <- function(env_files,
     )
   }
 
-  evi_mean_from_parquet_files(vi_files, temp_directory = temp_directory)
+  evi_mean_from_parquet_files(
+    vi_files,
+    temp_directory = temp_directory,
+    current_month = NULL
+  )
 }

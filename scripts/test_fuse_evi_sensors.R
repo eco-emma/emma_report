@@ -158,4 +158,33 @@ all_dates <- list_vi_parquet_assets(env_files = fake_env, current_month = NULL)
 stopifnot(nrow(all_dates) == length(dates))
 message("PASS: monthly VI parquet month filter")
 
+# Filename vs internal-date alignment (corrupt historical duplicates).
+stopifnot(isTRUE(vi_parquet_content_matches_file_date(
+  as.Date(c("2020-08-28", "2020-09-04", "2020-09-12")),
+  as.Date("2020-09-04")
+)))
+stopifnot(!isTRUE(vi_parquet_content_matches_file_date(
+  as.Date(c("2000-07-19", "2000-08-01", "2000-08-11")),
+  as.Date("2000-09-13")
+)))
+stopifnot(!isTRUE(vi_parquet_content_matches_file_date(
+  as.Date(c("2020-07-19", "2020-08-11")),
+  as.Date("2020-01-08")
+)))
+message("PASS: vi_parquet_content_matches_file_date")
+
+# Multi-date accumulate must count each (pid, date) once (no duplicate-key loss).
+acc0 <- accumulate_fused_evi_means(
+  numeric(0),
+  numeric(0),
+  data.frame(
+    pid = c(1L, 1L, 2L),
+    date = as.Date(c("2020-09-01", "2020-09-02", "2020-09-01")),
+    value = c(10, 30, 40)
+  )
+)
+stopifnot(identical(unname(acc0$sum_vec[c("1", "2")]), c(40, 40)))
+stopifnot(identical(unname(acc0$count_vec[c("1", "2")]), c(2, 1)))
+message("PASS: accumulate_fused_evi_means")
+
 message("All fuse_evi_sensors tests passed.")

@@ -741,11 +741,13 @@ if (isTRUE(has_focal_stations)) {
     )
 }
 
+# Defaults: Veld Age ON; Fire History / Stations / EVI (current) /
+# ΔEVI (long term) / Invasives OFF. ΔEVI (monthly) stays visible.
 park_map <- park_map %>%
   hideGroup("Stations") %>%
   hideGroup(EVI_CURRENT_GROUP) %>%
   hideGroup(EVI_DELTA_LONGTERM_GROUP) %>%
-  hideGroup(VELD_AGE_GROUP)
+  hideGroup(FIRE_HISTORY_GROUP)
 
 if (isTRUE(has_focal_invasives)) {
   park_map <- park_map %>% hideGroup("Invasives (new)")

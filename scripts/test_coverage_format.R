@@ -60,11 +60,17 @@ formatted <- fmt_km2(parks2$denom_km2)
 stopifnot(identical(formatted, c("225", "1,000")))
 stopifnot(!any(formatted == "—"))
 
+stopifnot(identical(
+  parse_burn_yyyymm(c("burn_modis_202609.tif", "burn_viirs_202601.tif", "nope.tif")),
+  as.Date(c("2026-09-01", "2026-01-01", NA))
+))
+
 fresh <- list(
   stac_item_id = "vi_20260921",
   stac_datetime = "2026-09-21T00:00:00Z",
   newest_release_tag = "fireage",
   newest_release_updated_at = "2026-10-16T19:52:30Z",
+  burn_as_of = as.Date("2026-09-01"),
   catalog_url = ENVDATA_STAC_CATALOG_URL,
   releases = data.frame(
     tag = c("fireage", "weather_data", "inat_data"),
@@ -103,18 +109,28 @@ stopifnot(grepl("Data status", ds))
 stopifnot(grepl("Fused EVI", ds))
 stopifnot(grepl("2026-09-21", ds))
 stopifnot(grepl("2026-10-01", ds))
+# Weather Updated from weather_data release day
+stopifnot(grepl("2026-10-10", ds))
+# Fire As-of from AppEEARS burn month (burn_as_of)
+stopifnot(grepl("2026-09-01", ds))
 stopifnot(grepl("known 40", ds))
+# Page row holds domain / parks-union coverage; no separate Domain area row
+stopifnot(grepl("domain 1,000", ds))
+stopifnot(grepl("parks-union 200", ds))
+stopifnot(!grepl("Domain area", ds))
 stopifnot(grepl("data.html#coverage-assessment-metrics", ds))
 stopifnot(!grepl("emma-coverage-strip", ds))
 stopifnot(!grepl("emma-freshness-badge", ds))
 # Soft-fail: missing STAC still renders a row
 fresh_na <- fresh
 fresh_na$stac_datetime <- NA_character_
+fresh_na$burn_as_of <- as.Date(NA)
 ds_na <- format_data_status_md(fake, fresh_na, weather_as_of = NULL)
 stopifnot(grepl("Fused EVI", ds_na))
 stopifnot(grepl("Weather", ds_na))
+stopifnot(grepl("Fire age", ds_na))
 
-# Park variant
+# Park variant — Page row carries park-cell coverage (no separate Park area row)
 dsp <- format_data_status_park_md(
   fake,
   fresh,
@@ -123,9 +139,11 @@ dsp <- format_data_status_park_md(
   data_href = "../data.html"
 )
 stopifnot(grepl("emma-data-status-park", dsp))
-stopifnot(grepl("Park area", dsp))
+stopifnot(!grepl("Park area", dsp))
 stopifnot(grepl("225 km", dsp))
+stopifnot(grepl("park cells", dsp))
 stopifnot(grepl("\\.\\./data.html", dsp))
-stopifnot(grepl("88%", dsp))
+stopifnot(grepl("89%", dsp))  # sprintf("%.0f", 88.8)
+stopifnot(grepl("2026-09-01", dsp))
 
 message("All coverage/freshness/Data status formatter tests passed.")

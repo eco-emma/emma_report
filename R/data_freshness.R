@@ -65,6 +65,64 @@ get_latest_vi_stac_datetime <- function() {
   out
 }
 
+#' Parse YYYYMM from AppEEARS monthly burn COG filenames (vectorized).
+#'
+#' @param file_name Character vector of basenames like `burn_modis_202609.tif`
+#' @return Date vector (first day of month); NA when no YYYYMM match
+parse_burn_yyyymm <- function(file_name) {
+  file_name <- as.character(file_name)
+  n <- length(file_name)
+  out <- rep(as.Date(NA), n)
+  if (!n) {
+    return(out)
+  }
+  ok <- grepl("^burn_(modis|viirs)_[0-9]{6}\\.tif$", file_name)
+  if (!any(ok)) {
+    return(out)
+  }
+  ym <- sub(
+    "^burn_(modis|viirs)_([0-9]{6})\\.tif$",
+    "\\2",
+    file_name[ok]
+  )
+  out[ok] <- as.Date(paste0(ym, "01"), format = "%Y%m%d")
+  out
+}
+
+#' Latest AppEEARS burned-area composite month (soft-fail → NA Date).
+#'
+#' Scans `burn_modis_raster` / `burn_viirs_raster` for `burn_*_YYYYMM.tif`
+#' and returns the max month as Date (first of that month). Prefer content
+#' filename date over asset `updated_at`.
+get_latest_burn_appeears_asof <- function(repo = ENVDATA_REPO) {
+  tags <- c(
+    ENVDATA_RELEASE_TAGS$burn_modis_raster,
+    ENVDATA_RELEASE_TAGS$burn_viirs_raster
+  )
+  dates <- as.Date(character())
+  for (tag in tags) {
+    assets <- tryCatch(
+      list_release_assets(repo = repo, tag = tag),
+      error = function(e) NULL
+    )
+    if (is.null(assets) || !is.data.frame(assets) || nrow(assets) < 1L) {
+      next
+    }
+    nms <- assets$file_name[
+      grepl("^burn_(modis|viirs)_[0-9]{6}\\.tif$", assets$file_name)
+    ]
+    if (!length(nms)) {
+      next
+    }
+    d <- parse_burn_yyyymm(nms)
+    dates <- c(dates, d[!is.na(d)])
+  }
+  if (!length(dates)) {
+    return(as.Date(NA))
+  }
+  max(dates, na.rm = TRUE)
+}
+
 #' Assemble freshness metadata for Quarto footers.
 #'
 #' @param tags Character vector of emma_envdata release tags to probe.
@@ -100,6 +158,10 @@ compute_data_freshness <- function(tags = c(
   } else {
     NA_character_
   }
+  burn_as_of <- tryCatch(
+    get_latest_burn_appeears_asof(),
+    error = function(e) as.Date(NA)
+  )
 
   list(
     stac_item_id = stac$item_id,
@@ -108,6 +170,7 @@ compute_data_freshness <- function(tags = c(
     releases = releases_df,
     newest_release_tag = newest,
     newest_release_updated_at = newest_at,
+    burn_as_of = burn_as_of,
     catalog_url = ENVDATA_STAC_CATALOG_URL
   )
 }
@@ -220,24 +283,37 @@ release_updated_day <- function(data_freshness, tag) {
 #'
 #' Merges former coverage + freshness strips. As-of dates that used to be a
 #' separate Home/park table belong here (and/or the Data Sources table).
+#' Page row carries build time (Updated) and domain / parks-union coverage.
 #'
 #' @param coverage_metrics List from [compute_coverage_metrics()]
 #' @param data_freshness List from [compute_data_freshness()]
 #' @param evi_as_of Date (or coercible) for fused EVI composite
 #' @param weather_as_of Date / character latest weather observation day
+#' @param weather_updated Date / character weather release refresh day
+#' @param fire_as_of Date / character last AppEEARS burned-area month
 #' @param build_time POSIXct Quarto build time (UTC)
 #' @param data_href Link to Data page (coverage definitions)
 format_data_status_md <- function(coverage_metrics,
                                   data_freshness,
                                   evi_as_of = coverage_metrics$evi_as_of,
                                   weather_as_of = NULL,
+                                  weather_updated = NULL,
+                                  fire_as_of = NULL,
                                   build_time = as.POSIXlt(Sys.time(), tz = "UTC"),
                                   data_href = "data.html") {
   m <- coverage_metrics
   evi_day <- .emma_asof_day(evi_as_of)
   stac_day <- .emma_asof_day(data_freshness$stac_datetime)
+  fire_day <- .emma_asof_day(
+    fire_as_of %||% data_freshness$burn_as_of
+  )
   fire_upd <- release_updated_day(data_freshness, "fireage")
   weather_day <- .emma_asof_day(weather_as_of)
+  weather_upd <- if (is.null(weather_updated)) {
+    release_updated_day(data_freshness, "weather_data")
+  } else {
+    .emma_asof_day(weather_updated)
+  }
   build_day <- format(build_time, "%Y-%m-%d %H:%M UTC")
 
   evi_cov <- paste0(fmt_km2(m$valid_evi$km2), " km²")
@@ -255,16 +331,13 @@ format_data_status_md <- function(coverage_metrics,
     .emma_td("Fused EVI"), .emma_td(evi_day), .emma_td(stac_day), .emma_td(evi_cov),
     "</tr>\n",
     "<tr>",
-    .emma_td("Fire age"), .emma_td("—"), .emma_td(fire_upd), .emma_td(fire_cov),
+    .emma_td("Fire age"), .emma_td(fire_day), .emma_td(fire_upd), .emma_td(fire_cov),
     "</tr>\n",
     "<tr>",
-    .emma_td("Weather"), .emma_td(weather_day), .emma_td("—"), .emma_td("—"),
+    .emma_td("Weather"), .emma_td(weather_day), .emma_td(weather_upd), .emma_td("—"),
     "</tr>\n",
     "<tr>",
-    .emma_td("Page"), .emma_td("—"), .emma_td(build_day), .emma_td("—"),
-    "</tr>\n",
-    "<tr>",
-    .emma_td("Domain area"), .emma_td("—"), .emma_td("—"), .emma_td(area_cov),
+    .emma_td("Page"), .emma_td("—"), .emma_td(build_day), .emma_td(area_cov),
     "</tr>\n"
   )
 
@@ -286,11 +359,15 @@ format_data_status_md <- function(coverage_metrics,
 }
 
 #' Park-page **Data status** footer (park coverage + station weather).
+#'
+#' Page row carries build time (Updated) and park-cell coverage.
 format_data_status_park_md <- function(coverage_metrics,
                                        data_freshness,
                                        park_name,
                                        evi_as_of = coverage_metrics$evi_as_of,
                                        weather_as_of = NULL,
+                                       weather_updated = NULL,
+                                       fire_as_of = NULL,
                                        build_time = as.POSIXlt(Sys.time(), tz = "UTC"),
                                        data_href = "../data.html") {
   m <- coverage_metrics
@@ -299,8 +376,16 @@ format_data_status_park_md <- function(coverage_metrics,
 
   evi_day <- .emma_asof_day(evi_as_of)
   stac_day <- .emma_asof_day(data_freshness$stac_datetime)
+  fire_day <- .emma_asof_day(
+    fire_as_of %||% data_freshness$burn_as_of
+  )
   fire_upd <- release_updated_day(data_freshness, "fireage")
   weather_day <- .emma_asof_day(weather_as_of)
+  weather_upd <- if (is.null(weather_updated)) {
+    release_updated_day(data_freshness, "weather_data")
+  } else {
+    .emma_asof_day(weather_updated)
+  }
   build_day <- format(build_time, "%Y-%m-%d %H:%M UTC")
 
   if (nrow(row) == 1L) {
@@ -324,16 +409,13 @@ format_data_status_park_md <- function(coverage_metrics,
     .emma_td("Fused EVI"), .emma_td(evi_day), .emma_td(stac_day), .emma_td(evi_cov),
     "</tr>\n",
     "<tr>",
-    .emma_td("Fire age"), .emma_td("—"), .emma_td(fire_upd), .emma_td(fire_cov),
+    .emma_td("Fire age"), .emma_td(fire_day), .emma_td(fire_upd), .emma_td(fire_cov),
     "</tr>\n",
     "<tr>",
-    .emma_td("Weather"), .emma_td(weather_day), .emma_td("—"), .emma_td("—"),
+    .emma_td("Weather"), .emma_td(weather_day), .emma_td(weather_upd), .emma_td("—"),
     "</tr>\n",
     "<tr>",
-    .emma_td("Page"), .emma_td("—"), .emma_td(build_day), .emma_td("—"),
-    "</tr>\n",
-    "<tr>",
-    .emma_td("Park area"), .emma_td("—"), .emma_td("—"), .emma_td(area_cov),
+    .emma_td("Page"), .emma_td("—"), .emma_td(build_day), .emma_td(area_cov),
     "</tr>\n"
   )
 

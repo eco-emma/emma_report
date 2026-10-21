@@ -241,7 +241,7 @@ compute_coverage_metrics <- function(most_recent_evi.tif,
     fire_mask_note = paste(
       "Fire-age known/censored exclude cells where all fireage bands",
       "(age, last burn, is_censored) are NA; censored = never-burned /",
-      "right-censored (`is_censored = 1`)."
+      "right-censored."
     ),
     domain = domain_stats,
     parks_union = parks_union_stats,

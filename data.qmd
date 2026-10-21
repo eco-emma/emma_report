@@ -20,9 +20,9 @@ tar_load(most_recent_evi_date)
 tar_load(weather_data)
 ```
 
-Maps and figures on this site are built from **original public datasets** (NASA MODIS/VIIRS, CapeNature and TMNP fire records, iNaturalist, GSOD/NCEI, and park boundaries). Processed COGs and tables are published for download via GitHub Releases and STAC — those packages are **delivery**, not the scientific citation.
+Maps and figures on this site are built from **original public datasets** (NASA MODIS/VIIRS, CapeNature and TMNP fire records, iNaturalist, GSOD/NCEI, and park boundaries). Processed COGs and tables are published for download via GitHub Releases and STAC.
 
-**As-of** is the date maps and figures *represent* (composite, fire snapshot, station day). **Last updated** is when the published artifact was last refreshed (STAC item datetime or release `updated_at`). Empty cells mean unknown — we do not invent dates.
+**As-of** is the date maps and figures *represent* (composite, fire snapshot, station day). **Last updated** is when the published artifact was last refreshed (STAC item datetime or release `updated_at`).
 
 # EMMA Data Sources and Status
 
@@ -31,6 +31,15 @@ evi_asof <- format(most_recent_evi_date, "%Y-%m-%d")
 evi_updated <- {
   st <- data_freshness$stac_datetime
   if (length(st) == 1L && !is.na(st) && nzchar(st)) substr(st, 1L, 10L) else "—"
+}
+# As-of = last AppEEARS burned-area month; Last updated = fireage release day
+fire_asof <- {
+  ba <- data_freshness$burn_as_of
+  if (inherits(ba, "Date") && length(ba) == 1L && !is.na(ba)) {
+    format(ba, "%Y-%m-%d")
+  } else {
+    "—"
+  }
 }
 fire_updated <- release_updated_day(data_freshness, "fireage")
 inat_updated <- release_updated_day(data_freshness, "inat_data")
@@ -49,24 +58,24 @@ tribble(
   "Latest greenness + monthly / long-term ΔEVI on park maps (EVI layer group)",
   evi_asof,
   evi_updated,
-  "NASA MODIS/VIIRS (fill order below)",
+  "NASA MODIS/VIIRS",
   "Veld Age (years)",
-  "Continuous fire-age raster; true ages (not collapsed to 20)",
-  "Fire-history snapshot",
+  "Continuous fire-age raster; true ages",
+  fire_asof,
   fire_updated,
   "CapeNature / TMNP fire records; MODIS/VIIRS burned area",
   "Fire History",
-  "Burn outlines (one layer; age-bin stroke colors)",
-  "Fire-history snapshot",
+  "Burn outlines",
+  fire_asof,
   fire_updated,
   "CapeNature / TMNP fire records; MODIS/VIIRS burned area",
   "Invasives",
-  "Recent iNaturalist records in parks + 10 km buffer (10×10 px leaf markers)",
+  "Recent iNaturalist records in parks + 10 km buffer",
   "Observations from 2020 onward",
   inat_updated,
   "iNaturalist",
   "Weather",
-  "Nearest GSOD station climate when rows exist (≥2000 when published)",
+  "Nearest GSOD station climate",
   weather_asof,
   weather_updated,
   "GSOD / NCEI"
@@ -85,7 +94,7 @@ Domain and park coverage totals. Denominators use the 500 m domain grid.
 - **Domain area** — cells in the EMMA domain mask.
 - **Parks-union area** — domain cells intersecting any park polygon.
 - **Valid latest fused EVI** — domain cells with non-NA fused EVI on the composite date.
-- **Fire-age known / censored** — after dropping cells where all fireage bands are NA; censored = never-burned / right-censored (`is_censored = 1`).
+- **Fire-age known / censored** — after dropping cells where all fireage bands are NA; censored = never-burned / right-censored.
 
 ```{r coverage-table, echo=FALSE}
 domain_km2 <- coverage_metrics$domain$km2
@@ -229,9 +238,3 @@ cat(format_data_status_md(
   data_href = "data.html"
 ))
 ```
-
-<p class="emma-saeon-footer">
-SAEON catalogue and project pages:
-<a href="https://catalogue.saeon.ac.za/">catalogue.saeon.ac.za</a> · 
-<a href="https://ulwazi.saeon.ac.za/projects/">ulwazi.saeon.ac.za/projects</a>
-</p>

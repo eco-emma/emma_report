@@ -22,6 +22,7 @@ library(terra)
 library(leaflet)
 library(forcats)
 library(htmlwidgets)
+library(cowplot)
 
 # need to include all necessary targets here otherwise they aren't dependencies with tar_quarto()
 # temp_directory is a pipeline constant (not a tar_target) — do not tar_load it.
@@ -136,72 +137,102 @@ index_map
 
 ```
 
-# Vegetation anomalies by park
+# Vegetation anomalies and veld age by park
 
 ```{r, echo=F, warning=F}
 
 # Quantile extract column names follow the terra layer name (e.g. "evi", "Years");
 # rename by position so website CI survives layer-name changes.
-protected_areas_monthly_delta_evi <- extract(monthly_delta_evi.tif,protected_areas,fun=quantile,na.rm=T) |> 
-  as_tibble() |> 
-  select(-1) |> #drop the index
-  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |> 
-  bind_cols(name=protected_areas$name)
+protected_areas_monthly_delta_evi <- extract(
+  monthly_delta_evi.tif, protected_areas, fun = quantile, na.rm = TRUE
+) |>
+  as_tibble() |>
+  select(-1) |> # drop the index
+  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |>
+  bind_cols(name = protected_areas$name)
 
-```
-
-```{r, echo=F, warning=F,fig.cap="Median monthly ΔEVI by park—higher = greener than typical for this month. Parks ordered low to high; open a park on the map for detail. Definitions: Data."}
-
-protected_areas_monthly_delta_evi |> 
-  filter(!is.na(Q50)) |> 
-  mutate(name = fct_reorder(as.factor(name), Q50)) |> 
-  ggplot(aes(y = name)) +
-    # Full range (min to max)
-    geom_segment(aes(x = Q0, xend = Q100, yend = name), color = "grey70", linewidth = .5) +
-    # Interquartile range (Q25 to Q75)
-    geom_segment(aes(x = Q25, xend = Q75, yend = name), color = "grey40", linewidth = 1) +
-    # Median point
-    geom_point(aes(x = Q50), size = 2, color = "black") +
-    labs(
-      x = "Mean Vegetation Anomaly (EVI)",
-      y = "Protected Area",
-      title = "Distribution of Vegetation Anomalies",
-      subtitle = "Showing full range (Q0–Q100), IQR (Q25–Q75), and median (Q50)"
-    ) 
-
-
-```
-
-
-# Veld age by park
-
-```{r, echo=F, warning=F}
 # Layer is named "Years" (see get_years_since_fire.tif); rename by position.
-years_since_fire <- extract(years_since_fire.tif,protected_areas,fun=quantile,na.rm=T) |> 
-  as_tibble() |> 
-  select(-1) |> #drop the index
-  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |> 
-  bind_cols(name=protected_areas$name)
+years_since_fire <- extract(
+  years_since_fire.tif, protected_areas, fun = quantile, na.rm = TRUE
+) |>
+  as_tibble() |>
+  select(-1) |> # drop the index
+  setNames(c("Q0", "Q25", "Q50", "Q75", "Q100")) |>
+  bind_cols(name = protected_areas$name)
+
+# Shared park order: median years since fire (Q50), ascending so oldest is on top.
+park_order <- years_since_fire |>
+  filter(!is.na(Q50)) |>
+  arrange(Q50, name) |>
+  pull(name)
+
+evi_by_park <- protected_areas_monthly_delta_evi |>
+  filter(name %in% park_order) |>
+  mutate(name = factor(name, levels = park_order))
+
+age_by_park <- years_since_fire |>
+  filter(name %in% park_order) |>
+  mutate(name = factor(name, levels = park_order))
 
 ```
 
-```{r, echo=F}
-years_since_fire |> 
-  filter(!is.na(Q50)) |> 
-  mutate(name = fct_reorder(as.factor(name), Q50)) |> 
+```{r index-park-distributions, echo=FALSE, warning=FALSE, fig.width=10, fig.height=8, fig.cap="Monthly ΔEVI (left) and years since fire (right) by park. Parks ordered by median veld age (oldest at top); same order on both panels. Segments show full range (Q0–Q100), thicker bar = IQR (Q25–Q75), point = median. Higher ΔEVI = greener than typical for this month. Open a park on the map for detail. Definitions: Data."}
+
+# Two-column figure: park labels on the left panel only (cowplot, same pattern as climate panels).
+p_evi <- evi_by_park |>
+  filter(!is.na(Q50)) |>
   ggplot(aes(y = name)) +
-    # Full range (min to max)
-    geom_segment(aes(x = Q0, xend = Q100, yend = name), color = "grey70", linewidth = .5) +
-    # Interquartile range (Q25 to Q75)
-    geom_segment(aes(x = Q25, xend = Q75, yend = name), color = "grey40", linewidth = 1) +
-    # Median point
-    geom_point(aes(x = Q50), size = 2, color = "black") +
-    labs(
-      x = "Years Since Fire",
-      y = NULL,
-      title = "Distribution of Time Since Fire by Site",
-      subtitle = "Showing full range (Q0–Q100), IQR (Q25–Q75), and median (Q50)"
-    ) 
+  geom_segment(
+    aes(x = Q0, xend = Q100, yend = name),
+    color = "grey70",
+    linewidth = 0.5
+  ) +
+  geom_segment(
+    aes(x = Q25, xend = Q75, yend = name),
+    color = "grey40",
+    linewidth = 1
+  ) +
+  geom_point(aes(x = Q50), size = 2, color = "black") +
+  scale_y_discrete(drop = FALSE) +
+  labs(
+    x = "Mean vegetation anomaly (ΔEVI)",
+    y = NULL,
+    title = "Vegetation anomalies"
+  )
+
+p_age <- age_by_park |>
+  filter(!is.na(Q50)) |>
+  ggplot(aes(y = name)) +
+  geom_segment(
+    aes(x = Q0, xend = Q100, yend = name),
+    color = "grey70",
+    linewidth = 0.5
+  ) +
+  geom_segment(
+    aes(x = Q25, xend = Q75, yend = name),
+    color = "grey40",
+    linewidth = 1
+  ) +
+  geom_point(aes(x = Q50), size = 2, color = "black") +
+  scale_y_discrete(drop = FALSE) +
+  labs(
+    x = "Years since fire",
+    y = NULL,
+    title = "Veld age"
+  ) +
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+cowplot::plot_grid(
+  p_evi,
+  p_age,
+  ncol = 2,
+  align = "h",
+  axis = "tb",
+  rel_widths = c(1.25, 1)
+)
 
 ```
 

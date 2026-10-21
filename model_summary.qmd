@@ -89,14 +89,27 @@ tar_load(spatial_outputs)
 rast <- projectRaster(spatial_outputs,
                       crs = "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs +type=crs")
 
-leaflet() %>% setView(lng = 18.577, lat = -33.998707, zoom = 10) %>% 
-  addProviderTiles(providers$Esri.WorldImagery) %>% 
+leaflet() %>% setView(lng = 18.577, lat = -33.998707, zoom = 10) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution = "Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
+  addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
   addRasterImage(rast[[1]],group=names(rast)[1]) %>% #, color = ~pal(values(rast)[,1]) 
   addRasterImage(rast[[2]],group=names(rast)[2]) %>% 
   addRasterImage(rast[[3]],group=names(rast)[3]) %>% 
   addRasterImage(rast[[4]],group=names(rast)[4]) %>% 
   addLayersControl(
-    baseGroups = names(rast),
+    baseGroups = c("Dark Gray Canvas", "World Imagery", "NatGeo"),
+    overlayGroups = names(rast),
     options = layersControlOptions(collapsed = FALSE)) #%>% 
 #  addLegend("bottomright", pal = pal, values = ~,
 #    title = "Est. GDP (2010)",

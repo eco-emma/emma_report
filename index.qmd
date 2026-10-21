@@ -95,7 +95,20 @@ years_since_fire_pal <- leaflet::colorNumeric(
 
 index_overlay_groups <- c("Park", VELD_AGE_GROUP)
 
+# Default basemap: Esri Dark Gray Canvas (webmap 1970c1995b8f44749f4b9b6e81b5ba45).
+# World Imagery / NatGeo remain available as alternates.
 index_map <- leaflet(data = protected_areas) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+    attribution = "Sources: Esri, HERE, Garmin, &copy; OpenStreetMap contributors, and the GIS User Community",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
+  addTiles(
+    urlTemplate = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}",
+    group = "Dark Gray Canvas",
+    options = tileOptions(maxZoom = 16)
+  ) %>%
   addProviderTiles(providers$Esri.WorldImagery, group = "World Imagery") %>%
   addProviderTiles("Esri.NatGeoWorldMap", group = "NatGeo") %>%
   addRasterImage(
@@ -125,7 +138,7 @@ index_map <- leaflet(data = protected_areas) %>%
     group = VELD_AGE_GROUP
   ) %>%
   addLayersControl(
-    baseGroups = c("World Imagery", "NatGeo"),
+    baseGroups = c("Dark Gray Canvas", "World Imagery", "NatGeo"),
     overlayGroups = index_overlay_groups,
     options = layersControlOptions(collapsed = FALSE),
     position = "topright"

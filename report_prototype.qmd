@@ -1274,13 +1274,15 @@ Figure 3. Histogram of vegetation ages. For the purposes of this plot, any veget
 ## Weather Data
 
 ```{r weather-anomaly-card, echo=FALSE, results='asis'}
+# Use the same as_of as climate figures (latest GSOD date), not Sys.Date().
+weather_as_of <- get0("climate_as_of", inherits = TRUE, ifnotfound = Sys.Date())
 weather_anom <- if (isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)) &&
                       is.data.frame(get0("focal_weather", inherits = TRUE, ifnotfound = NULL)) &&
                       nrow(focal_weather) >= 1L) {
   weather_12mo_anomaly(
     focal_weather = focal_weather,
     closest_stations = get0("closest_stations", inherits = TRUE, ifnotfound = character(0)),
-    as_of = Sys.Date()
+    as_of = weather_as_of
   )
 } else {
   list(has_weather = FALSE)
@@ -1315,58 +1317,31 @@ cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weath
   d <- suppressWarnings(as.integer(layers$smooth_days))
   if (length(d) == 1L && is.finite(d) && d > 1L) {
     return(sprintf(
-      " Median and percentile ribbons use a centred %d-day rolling mean; ",
+      " Median and percentile ribbons use a centred %d-day rolling mean.",
       d
     ))
   }
-  " "
+  ""
 }
-precip_fig_cap <- paste0(
-  "Figure 3. Cumulative precipitation over the previous 12 months ",
-  "(mm; curve starts at 0 at the window start and sums forward) ending at ",
-  "the latest GSOD observation (via emma_envdata `weather_data`, rows from ",
-  "≥2000 when published). Thin grey lines are prior 12-month cumulative ",
-  "slices aligned onto this window; grey ribbons are the 5–95th and 25–75th ",
-  "percentiles; the thick black line is the long-term median; the thick red ",
-  "line is the current window cumulative (daily, unsmoothed).",
+climate_fig_cap <- paste0(
+  "Figure 3. Precipitation (top) and temperature (bottom) over the previous ",
+  "12 months ending at the latest GSOD observation (via emma_envdata ",
+  "`weather_data`, rows from ≥2000 when published). Panels share the same ",
+  "rolling 12-month x-axis (month ticks aligned). Top: cumulative precip ",
+  "(mm; starts at 0; log1p y-axis). Bottom: daily temperature (°C). Thin ",
+  "grey lines are prior 12-month slices; ribbons are 5–95th and 25–75th ",
+  "percentiles; thick black = long-term median; thick red = current window ",
+  "(daily, unsmoothed). ",
   .clim_smooth_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
-  "Envelope uses ",
+  " Envelope uses ",
   .clim_span_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
-  ". The y-axis uses a log1p transform (tick labels in mm)."
-)
-temp_fig_cap <- paste0(
-  "Figure 4. Daily temperature over the previous 12 months ending at the ",
-  "latest GSOD observation (via emma_envdata `weather_data`, rows from ",
-  "≥2000 when published). Thin grey lines are prior 12-month slices aligned ",
-  "onto this window; grey ribbons are the 5–95th and 25–75th percentiles; ",
-  "the thick black line is the long-term median; the thick red line is the ",
-  "current trailing year (daily, unsmoothed).",
-  .clim_smooth_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
-  "Envelope uses ",
-  .clim_span_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
-  ". Precip and temperature panels share the same rolling 12-month x-window."
+  "."
 )
 ```
 
-```{r plot_precip, echo=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message=FALSE, warning=FALSE, fig.width=10, fig.height=6, fig.cap=precip_fig_cap}
+```{r plot_climate_combo, echo=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message=FALSE, warning=FALSE, fig.width=10, fig.height=9, fig.cap=climate_fig_cap}
 
-plot_weather_climatology(
-  precip_clim,
-  ylab = "Cumulative precip (mm)",
-  title = "Cumulative precipitation (previous 12 months)",
-  log1p_y = TRUE
-)
-
-```
-
-```{r plot_temp, echo=FALSE, eval=isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE)), message=FALSE, warning=FALSE, fig.width=10, fig.height=6, fig.cap=temp_fig_cap}
-
-plot_weather_climatology(
-  temp_clim,
-  ylab = "Temperature (°C)",
-  title = "Temperature (previous 12 months)",
-  log1p_y = FALSE
-)
+plot_weather_climatology_combo(precip_clim, temp_clim)
 
 ```
 

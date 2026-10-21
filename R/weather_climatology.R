@@ -316,17 +316,38 @@ weather_climatology_layers <- function(daily,
   out
 }
 
+#' Shared month-break Date scale for stacked climate panels.
+#'
+#' Ensures precip and temp panels use identical limits and month ticks so
+#' cowplot / plot_grid vertical alignment matches Fig. 2.
+weather_climatology_x_scale <- function(window_start, window_end) {
+  window_start <- as.Date(window_start)
+  window_end <- as.Date(window_end)
+  ggplot2::scale_x_date(
+    limits = c(window_start, window_end),
+    date_breaks = "1 month",
+    date_labels = "%b %Y",
+    expand = c(0.01, 0)
+  )
+}
+
 #' ggplot2 rolling 12-month climatology envelope.
 #'
 #' @param layers list from [weather_climatology_layers()]
 #' @param ylab y-axis label
 #' @param title plot title
 #' @param log1p_y if TRUE, plot log1p(value) with expm1 tick labels (precip)
+#' @param show_x_axis if FALSE, hide x tick labels/ticks (for upper stacked panel)
+#' @param show_subtitle if FALSE, omit the envelope subtitle (combined caption)
+#' @param x_limits optional length-2 Date vector overriding layer window limits
 #' @return ggplot object (or empty annotated plot when no data)
 plot_weather_climatology <- function(layers,
                                      ylab,
                                      title,
-                                     log1p_y = FALSE) {
+                                     log1p_y = FALSE,
+                                     show_x_axis = TRUE,
+                                     show_subtitle = TRUE,
+                                     x_limits = NULL) {
   empty_plot <- function(msg) {
     ggplot2::ggplot() +
       ggplot2::annotate("text", x = 0.5, y = 0.5, label = msg) +
@@ -346,32 +367,45 @@ plot_weather_climatology <- function(layers,
     identity
   }
 
-  subtitle <- NULL
-  n_hist <- suppressWarnings(as.integer(layers$n_hist_years))
-  smooth_days <- suppressWarnings(as.integer(layers$smooth_days))
-  smooth_txt <- if (length(smooth_days) == 1L && is.finite(smooth_days) &&
-                      smooth_days > 1L) {
-    sprintf("; median/ribbons: %d-day rolling mean", smooth_days)
+  x_lo <- if (!is.null(x_limits) && length(x_limits) == 2L) {
+    as.Date(x_limits[[1]])
   } else {
-    ""
+    as.Date(layers$window_start)
   }
-  if (length(n_hist) == 1L && is.finite(n_hist) && n_hist >= 1L) {
-    rs <- layers$record_start
-    re <- layers$record_end
-    if (!is.null(rs) && !is.null(re) && !is.na(rs) && !is.na(re)) {
-      subtitle <- sprintf(
-        "Envelope from %d prior 12-mo slices (record %s–%s)%s",
-        n_hist,
-        format(as.Date(rs), "%Y"),
-        format(as.Date(re), "%Y"),
-        smooth_txt
-      )
+  x_hi <- if (!is.null(x_limits) && length(x_limits) == 2L) {
+    as.Date(x_limits[[2]])
+  } else {
+    as.Date(layers$window_end)
+  }
+
+  subtitle <- NULL
+  if (isTRUE(show_subtitle)) {
+    n_hist <- suppressWarnings(as.integer(layers$n_hist_years))
+    smooth_days <- suppressWarnings(as.integer(layers$smooth_days))
+    smooth_txt <- if (length(smooth_days) == 1L && is.finite(smooth_days) &&
+                        smooth_days > 1L) {
+      sprintf("; median/ribbons: %d-day rolling mean", smooth_days)
     } else {
-      subtitle <- sprintf(
-        "Envelope from %d prior 12-mo slices%s",
-        n_hist,
-        smooth_txt
-      )
+      ""
+    }
+    if (length(n_hist) == 1L && is.finite(n_hist) && n_hist >= 1L) {
+      rs <- layers$record_start
+      re <- layers$record_end
+      if (!is.null(rs) && !is.null(re) && !is.na(rs) && !is.na(re)) {
+        subtitle <- sprintf(
+          "Envelope from %d prior 12-mo slices (record %s–%s)%s",
+          n_hist,
+          format(as.Date(rs), "%Y"),
+          format(as.Date(re), "%Y"),
+          smooth_txt
+        )
+      } else {
+        subtitle <- sprintf(
+          "Envelope from %d prior 12-mo slices%s",
+          n_hist,
+          smooth_txt
+        )
+      }
     }
   }
 
@@ -383,15 +417,18 @@ plot_weather_climatology <- function(layers,
       x = NULL,
       y = ylab
     ) +
-    ggplot2::scale_x_date(
-      limits = c(layers$window_start, layers$window_end),
-      date_breaks = "1 month",
-      date_labels = "%b %Y",
-      expand = c(0.01, 0)
-    ) +
+    weather_climatology_x_scale(x_lo, x_hi) +
     ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)
+      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+      plot.margin = ggplot2::margin(4, 8, 2, 8)
     )
+  if (!isTRUE(show_x_axis)) {
+    p <- p +
+      ggplot2::theme(
+        axis.text.x = ggplot2::element_blank(),
+        axis.ticks.x = ggplot2::element_blank()
+      )
+  }
 
   if (nrow(env) >= 1L) {
     env_plot <- env
@@ -476,4 +513,64 @@ plot_weather_climatology <- function(layers,
   }
 
   p
+}
+
+#' Two-panel precip + temperature climatology with aligned x-axis ticks.
+#'
+#' Stacks cumulative precip (top) and daily temperature (bottom) via
+#' `cowplot::plot_grid(align = "v", axis = "lr")`, sharing the same rolling
+#' 12-month date limits and month breaks (same pattern as Fig. 2).
+#'
+#' @param precip_layers list from [weather_climatology_layers()] (`cumulative`)
+#' @param temp_layers list from [weather_climatology_layers()] (daily temp)
+#' @return cowplot / ggplot grob
+plot_weather_climatology_combo <- function(precip_layers, temp_layers) {
+  # Prefer precip window; fall back to temp if precip missing
+  x_lo <- NA
+  x_hi <- NA
+  if (is.list(precip_layers) && isTRUE(precip_layers$has_data)) {
+    x_lo <- as.Date(precip_layers$window_start)
+    x_hi <- as.Date(precip_layers$window_end)
+  } else if (is.list(temp_layers) && isTRUE(temp_layers$has_data)) {
+    x_lo <- as.Date(temp_layers$window_start)
+    x_hi <- as.Date(temp_layers$window_end)
+  }
+  x_limits <- if (is.finite(x_lo) && is.finite(x_hi)) {
+    c(x_lo, x_hi)
+  } else {
+    NULL
+  }
+
+  p_precip <- plot_weather_climatology(
+    precip_layers,
+    ylab = "Cumulative precip (mm)",
+    title = "Cumulative precipitation",
+    log1p_y = TRUE,
+    show_x_axis = FALSE,
+    show_subtitle = FALSE,
+    x_limits = x_limits
+  )
+  p_temp <- plot_weather_climatology(
+    temp_layers,
+    ylab = "Temperature (°C)",
+    title = "Temperature",
+    log1p_y = FALSE,
+    show_x_axis = TRUE,
+    show_subtitle = FALSE,
+    x_limits = x_limits
+  )
+
+  if (!requireNamespace("cowplot", quietly = TRUE)) {
+    # Soft fallback: return precip only if cowplot missing
+    return(p_precip)
+  }
+  cowplot::plot_grid(
+    p_precip,
+    p_temp,
+    ncol = 1,
+    align = "v",
+    axis = "lr",
+    rel_heights = c(1, 1),
+    labels = NULL
+  )
 }

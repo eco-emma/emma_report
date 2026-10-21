@@ -978,6 +978,131 @@ fire_history_outline_color <- function(years) {
   out
 }
 
+#' Layer id used for the combined park-map ImageQuery control.
+#'
+#' Must match an `addRasterImage(..., layerId = ...)` that stays **visible** by
+#' default. leafem clears the query when its layerId group is hidden — binding
+#' to `evi_current` (hidden on load) made the rich hover appear broken.
+PARK_MAP_QUERY_LAYER_ID <- "evi_delta_monthly"
+
+#' Right-censored / never-burned flag for fireage parquet rows.
+#'
+#' Prefers `is_censored` when present (fireage ≥ 2026-09-21 schema). Falls back
+#' to NA/`0` `last_burn_date` or `fire_count <= 0` on older assets.
+fire_history_row_censored <- function(df) {
+  stopifnot(is.data.frame(df))
+  n <- nrow(df)
+  if (n < 1L) {
+    return(logical())
+  }
+  if ("is_censored" %in% names(df) && !all(is.na(df$is_censored))) {
+    ic <- df$is_censored
+    if (is.numeric(ic)) {
+      # NA is_censored → fall through to last_burn / fire_count for that row
+      out <- !is.na(ic) & ic != 0
+      need_fb <- is.na(ic)
+      if (any(need_fb)) {
+        lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
+        fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
+        lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
+        fc_zero <- !is.na(fc) & fc <= 0
+        out[need_fb] <- lbd_missing[need_fb] | fc_zero[need_fb]
+      }
+      return(out)
+    }
+    out <- as.logical(ic)
+    need_fb <- is.na(out)
+    out[need_fb] <- FALSE
+    if (any(need_fb)) {
+      lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
+      fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
+      lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
+      fc_zero <- !is.na(fc) & fc <= 0
+      out[need_fb] <- lbd_missing[need_fb] | fc_zero[need_fb]
+    }
+    return(out)
+  }
+  lbd <- if ("last_burn_date" %in% names(df)) df$last_burn_date else rep(NA, n)
+  fc <- if ("fire_count" %in% names(df)) df$fire_count else rep(NA_real_, n)
+  lbd_missing <- is.na(lbd) | (is.numeric(lbd) & lbd == 0)
+  fc_zero <- !is.na(fc) & fc <= 0
+  lbd_missing | fc_zero
+}
+
+#' Keep the latest composite row per park cell (`cellID` / `pid`).
+#'
+#' Global `date == max(date)` drops most cells when composite dates differ by
+#' pixel (common in fireage parquet) — only a handful of cells share the
+#' absolute max date, so Fig. 2 “Area burned” goes empty.
+fire_history_latest_per_cell <- function(df, cell_col = "cellID") {
+  stopifnot(is.data.frame(df))
+  if (nrow(df) < 1L) {
+    return(df)
+  }
+  if (!cell_col %in% names(df) && "pid" %in% names(df)) {
+    cell_col <- "pid"
+  }
+  stopifnot(cell_col %in% names(df), "date" %in% names(df))
+  dates <- df$date
+  if (!inherits(dates, "Date")) {
+    dates <- suppressWarnings(lubridate::as_date(dates))
+  }
+  ord <- order(df[[cell_col]], dates, na.last = FALSE)
+  df <- df[ord, , drop = FALSE]
+  keep <- !duplicated(df[[cell_col]], fromLast = TRUE)
+  df[keep, , drop = FALSE]
+}
+
+#' Calendar-year burned area (ha) from `fireage_current.tif` last-burn dates.
+#'
+#' Uses the same snapshot as the map Veld Age layer (includes TMNP / CapeNature
+#' sources). Parquet history alone can miss park-local sources on older dates.
+#'
+#' @param fireage_rast SpatRaster with `last_burn_date` (+ optional `is_censored`)
+#' @param park_mask Logical cell mask aligned to `fireage_rast`
+#' @param cell_ha Hectares per cell
+#' @return data.frame with `burn_year`, `n_cells`, `area_ha`
+park_burned_area_by_year <- function(fireage_rast, park_mask, cell_ha) {
+  empty <- data.frame(
+    burn_year = integer(),
+    n_cells = integer(),
+    area_ha = numeric(),
+    stringsAsFactors = FALSE
+  )
+  if (!inherits(fireage_rast, "SpatRaster") || length(park_mask) < 1L) {
+    return(empty)
+  }
+  if (!is.finite(cell_ha) || cell_ha <= 0) {
+    return(empty)
+  }
+  masks <- fire_age_coverage_masks(fireage_rast, park_mask)
+  nms <- names(fireage_rast)
+  last <- if ("last_burn_date" %in% nms) {
+    fireage_rast[["last_burn_date"]]
+  } else if (terra::nlyr(fireage_rast) >= 2L) {
+    fireage_rast[[2]]
+  } else {
+    return(empty)
+  }
+  last_v <- terra::values(last, mat = FALSE)
+  keep <- masks$known & is.finite(last_v) & last_v > 0
+  if (!any(keep, na.rm = TRUE)) {
+    return(empty)
+  }
+  burn_dates <- suppressWarnings(lubridate::as_date(last_v[keep]))
+  burn_year <- lubridate::year(burn_dates)
+  burn_year <- burn_year[is.finite(burn_year)]
+  if (!length(burn_year)) {
+    return(empty)
+  }
+  tab <- as.data.frame(table(burn_year), stringsAsFactors = FALSE)
+  names(tab) <- c("burn_year", "n_cells")
+  tab$burn_year <- as.integer(as.character(tab$burn_year))
+  tab$n_cells <- as.integer(tab$n_cells)
+  tab$area_ha <- as.numeric(tab$n_cells) * as.numeric(cell_ha)
+  tab[order(tab$burn_year), , drop = FALSE]
+}
+
 #' Format rank-3 KPI + stress strip (Markdown).
 format_delta_evi_kpi_md <- function(park_mean_delta,
                                     stress,

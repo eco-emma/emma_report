@@ -634,7 +634,7 @@ invasive_watch_list <- function(focal_invasives) {
 #'
 #' Uses the nearest station (first in `closest_stations` / first column after
 #' mean) when multiple stations are present. Long mean = all available history
-#' for the same station (GSOD rows from ≥2000 when published in emma_envdata).
+#' for the same station (GSOD/NCEI rows from ≥2000 when available).
 weather_12mo_anomaly <- function(focal_weather,
                                  closest_stations = character(0),
                                  as_of = Sys.Date()) {
@@ -1209,8 +1209,8 @@ format_weather_anomaly_md <- function(anom) {
     "**Rainfall & temperature context** (nearest station: ",
     anom$station_name %||% "—", ") — ",
     precip_txt, "; ", temp_txt, ". ",
-    "*Long mean uses all GSOD rows from ≥2000 published in ",
-    "`weather_data` (span varies by park/station). Pair with monthly ΔEVI when ",
+    "*Long mean uses GSOD (NCEI) daily rows from ≥2000 when available ",
+    "(span varies by park/station). Pair with monthly ΔEVI when ",
     "interpreting brown anomalies.*\n\n",
     "</div>\n"
   )

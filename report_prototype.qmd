@@ -1305,27 +1305,27 @@ cat(format_weather_anomaly_md(weather_anom))
 ```
 
 ```{r weather_unavailable, echo=FALSE, results='asis', eval=!isTRUE(get0("has_weather", inherits = TRUE, ifnotfound = FALSE))}
-cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weather_data`) for nearby stations.*\n")
+cat("*Climate figures unavailable: no GSOD (NCEI) weather rows for nearby stations.*\n")
 ```
 
 ```{r climate_fig_caps, echo=FALSE}
 .clim_span_txt <- function(layers) {
   if (!is.list(layers)) {
-    return("the full published GSOD record for nearby stations")
+    return("the full GSOD (NCEI) record for nearby stations")
   }
   n <- suppressWarnings(as.integer(layers$n_hist_years))
   rs <- tryCatch(as.Date(layers$record_start), error = function(e) as.Date(NA))
   re <- tryCatch(as.Date(layers$record_end), error = function(e) as.Date(NA))
   if (!length(n) || !is.finite(n) || n < 1L) {
-    return("the full published GSOD record for nearby stations")
+    return("the full GSOD (NCEI) record for nearby stations")
   }
   if (!is.na(rs) && !is.na(re)) {
     return(sprintf(
-      "%d prior 12-mo slices from the published station record (%s–%s)",
+      "%d prior 12-mo slices from the GSOD station record (%s–%s)",
       n, format(rs, "%Y"), format(re, "%Y")
     ))
   }
-  sprintf("%d prior 12-mo slices from the published station record", n)
+  sprintf("%d prior 12-mo slices from the GSOD station record", n)
 }
 .clim_smooth_txt <- function(layers) {
   d <- suppressWarnings(as.integer(layers$smooth_days))
@@ -1340,11 +1340,12 @@ cat("*Climate figures unavailable: no GSOD weather rows (via emma_envdata `weath
 precip_fig_cap <- paste0(
   "Figure 3. Cumulative precipitation over the previous 12 months ",
   "(mm; curve starts at 0 at the window start and sums forward) ending at ",
-  "the latest GSOD observation (via emma_envdata `weather_data`, rows from ",
-  "≥2000 when published). Thin grey lines are prior 12-month cumulative ",
-  "slices aligned onto this window; grey ribbons are the 5–95th and 25–75th ",
-  "percentiles; the thick black line is the long-term median; the thick red ",
-  "line is the current window cumulative (daily, unsmoothed).",
+  "the latest GSOD (NCEI Global Summary of the Day) observation ",
+  "(station rows from ≥2000 when available). Thin grey lines are prior ",
+  "12-month cumulative slices aligned onto this window; grey ribbons are ",
+  "the 5–95th and 25–75th percentiles; the thick black line is the ",
+  "long-term median; the thick red line is the current window cumulative ",
+  "(daily, unsmoothed).",
   .clim_smooth_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
   "Envelope uses ",
   .clim_span_txt(get0("precip_clim", inherits = TRUE, ifnotfound = NULL)),
@@ -1352,11 +1353,11 @@ precip_fig_cap <- paste0(
 )
 temp_fig_cap <- paste0(
   "Figure 4. Daily temperature over the previous 12 months ending at the ",
-  "latest GSOD observation (via emma_envdata `weather_data`, rows from ",
-  "≥2000 when published). Thin grey lines are prior 12-month slices aligned ",
-  "onto this window; grey ribbons are the 5–95th and 25–75th percentiles; ",
-  "the thick black line is the long-term median; the thick red line is the ",
-  "current trailing year (daily, unsmoothed).",
+  "latest GSOD (NCEI Global Summary of the Day) observation ",
+  "(station rows from ≥2000 when available). Thin grey lines are prior ",
+  "12-month slices aligned onto this window; grey ribbons are the 5–95th ",
+  "and 25–75th percentiles; the thick black line is the long-term median; ",
+  "the thick red line is the current trailing year (daily, unsmoothed).",
   .clim_smooth_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
   "Envelope uses ",
   .clim_span_txt(get0("temp_clim", inherits = TRUE, ifnotfound = NULL)),
@@ -1558,7 +1559,7 @@ spi2_xts= xts(select(spi2,-date),order.by=spi2$date)
 
 # Report Metadata
 
-This table summarizes the date this report was generated and the most recent observation for each data type. Site products are derived from [`emma_envdata`](https://github.com/eco-emma/emma_envdata) releases and STAC — see [Data sources & downloads →](../data.html).
+This table summarizes the date this report was generated and the most recent observation for each data type. Original sources (NASA MODIS/VIIRS, GSOD/NCEI, CapeNature/TMNP fire records, iNaturalist, and park boundary datasets) are listed on [Data sources & downloads →](../data.html).
 
 ```{r, echo=F, results='asis'}
 # build table of dates when products were last updated
